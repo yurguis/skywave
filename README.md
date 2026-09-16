@@ -318,6 +318,10 @@ certbot certonly --dns-cloudflare \
     -d skywave.example.com
 ```
 
+certbot does not have to be installed for this: `docker run --rm -v ~/.certbot/etc:/etc/letsencrypt
+-v ~/.certbot/lib:/var/lib/letsencrypt certbot/dns-cloudflare certonly …` does the same job
+with nothing left on the machine.
+
 Copy (or symlink) the issued `fullchain.pem` and `privkey.pem` into `TLS_DIR`. Certificates
 last 90 days, so renewal needs to be automatic, and nginx only reads them at start: run
 `docker compose restart web` from the renewal hook.
