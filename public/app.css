@@ -222,7 +222,17 @@ button:disabled { opacity: .55; cursor: progress; }
 .programs .play { font-size: 10px; color: var(--accent); width: 10px; }
 .programs button.program:disabled .play { visibility: hidden; }
 
-.player { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+/* The picture is the whole card: padding around a video is space the player could use.
+   Clipping to the card's own radius keeps the rounded corners without an inset. */
+.player.card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.player .video-wrap { border-radius: 0; }
 
 /* Player with custom overlay controls */
 
