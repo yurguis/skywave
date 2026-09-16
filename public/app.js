@@ -306,11 +306,18 @@ function selectDevice(host) {
     onclick: () => showTab(name),
   }, TAB_LABELS[name]));
 
-  // The tab carries a dot while something is recording, so it shows from any tab. Loading
-  // now also lets the guide know which programs are already scheduled.
+  // The tab carries a pulsing dot while something is recording, so it shows from any tab.
+  // Loading now also lets the guide know which programs are already scheduled.
   const recordingsTab = tabButtons.find((button) => button.dataset.tab === 'recordings');
   state.recordingsView.onUpdate((summary) => {
-    recordingsTab.textContent = summary.recording > 0 ? `${TAB_LABELS.recordings} ●` : TAB_LABELS.recordings;
+    recordingsTab.replaceChildren(...[
+      TAB_LABELS.recordings,
+      summary.recording > 0 && h('span', { class: 'tab-dot', title: 'Recording now', 'aria-label': 'Recording now' }),
+    ].filter(Boolean));
+
+    // The record button answers to the same news: it pulses while the program on screen is
+    // being recorded, and pressing it then stops that recording.
+    state.player?.recordingsChanged();
   });
   state.recordingsView.load();
 
@@ -1227,6 +1234,7 @@ function createPlayer(panel) {
       const next = channel?.events.find((candidate) => candidate.start >= now && candidate !== event);
 
       airing = channel && event ? { channel, event } : null;
+      updateRecordButton();
 
       if (event) {
         const end = event.start + event.duration;
@@ -1246,6 +1254,7 @@ function createPlayer(panel) {
     } catch {
       programLabel.textContent = '';
       airing = null;
+      updateRecordButton();
     }
 
     programProgress.hidden = true;
@@ -1266,8 +1275,35 @@ function createPlayer(panel) {
   }
 
   /**
-   * Record what this channel is showing now. The recorder takes a tuner of its own, so
-   * watching carries on; a channel with no guide data has nothing to schedule.
+   * The recording of the program on screen, when there is one. The Recordings tab keeps
+   * that list current; this only asks it what it already knows.
+   */
+  function airingRecording() {
+    if (vod || airing === null) return null;
+
+    const scheduled = state.recordingsView?.scheduleFor(airing.channel, airing.event) ?? null;
+
+    return scheduled === null ? null : state.recordingsView?.recordingFor(scheduled.id) ?? null;
+  }
+
+  /**
+   * Make the button say what pressing it will do. It pulses while the program on screen is
+   * being recorded, which is also the only place to stop that recording from the player.
+   */
+  function updateRecordButton() {
+    const recording = airingRecording();
+    const stopping = recording !== null && recording.stopRequested !== null;
+
+    recordButton.classList.toggle('is-recording', recording !== null);
+    recordButton.disabled = stopping;
+    setIcon(recordButton, 'record', recording === null ? 'Record this program'
+      : stopping ? 'Stopping…' : `Stop recording ${recording.title}`);
+  }
+
+  /**
+   * Record what this channel is showing now, or stop it when it is already being recorded.
+   * The recorder takes a tuner of its own, so watching carries on either way; a channel
+   * with no guide data has nothing to schedule.
    */
   async function recordCurrentProgram() {
     if (vod) return;
@@ -1278,33 +1314,40 @@ function createPlayer(panel) {
       return;
     }
 
+    const recording = airingRecording();
     const { channel, event } = airing;
     recordButton.disabled = true;
 
     try {
-      await api('/api/recordings', {
-        method: 'POST',
-        body: JSON.stringify({
-          device: current.host,
-          physical: channel.physical,
-          program: channel.program,
-          virtual: channel.virtual,
-          channelName: channel.name,
-          eventId: event.eventId,
-          start: event.start,
-          duration: event.duration,
-          title: event.title,
-          description: event.description ?? null,
-        }),
-      });
+      if (recording !== null) {
+        await api(`/api/recordings/${recording.id}/stop`, { method: 'POST' });
+        setStatus(`Stopped recording ${event.title}`);
+      } else {
+        await api('/api/recordings', {
+          method: 'POST',
+          body: JSON.stringify({
+            device: current.host,
+            physical: channel.physical,
+            program: channel.program,
+            virtual: channel.virtual,
+            channelName: channel.name,
+            eventId: event.eventId,
+            start: event.start,
+            duration: event.duration,
+            title: event.title,
+            description: event.description ?? null,
+          }),
+        });
 
-      setStatus(`Recording ${event.title}`);
+        setStatus(`Recording ${event.title}`);
+      }
+
       setTimeout(() => setStatus(vod ? 'Playing' : 'Live'), 4000);
-      state.recordingsView?.load();
+      await state.recordingsView?.load();
     } catch (error) {
       showError(error);
     } finally {
-      recordButton.disabled = false;
+      updateRecordButton();
     }
   }
 
@@ -1567,7 +1610,7 @@ function createPlayer(panel) {
     if (session) navigator.sendBeacon(`/api/streams/${session.id}/leave?viewer=${VIEWER_ID}`);
   }
 
-  return { play, playFile, stop, leaveOnUnload };
+  return { play, playFile, stop, leaveOnUnload, recordingsChanged: updateRecordButton };
 }
 
 // ---------------------------------------------------------------------------

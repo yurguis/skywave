@@ -672,6 +672,30 @@ details > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 
 button.record.is-recording { border-color: var(--red); color: var(--red); }
 
+/* Something is being recorded right now. The same slow pulse on the Recordings tab, the
+   guide's stop button and the player's record button, so "in progress" always looks alike. */
+@keyframes pulse { 50% { opacity: .35; } }
+
+.tab-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--red);
+  vertical-align: 1px;
+}
+
+.tab-dot,
+button.record.is-recording,
+.video-wrap button.overlay-record.is-recording { animation: pulse 1.6s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tab-dot,
+  button.record.is-recording,
+  .video-wrap button.overlay-record.is-recording { animation: none; }
+}
+
 .record-choice { display: inline-flex; align-items: center; gap: 6px; }
 .record-choice .record-format { padding: 6px 8px; }
 
