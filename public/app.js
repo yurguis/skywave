@@ -346,9 +346,9 @@ function selectDevice(host) {
     ),
     playerPanel,
     h('div', { class: 'tabs', role: 'tablist' }, tabButtons),
-    views.tuners,
-    views.guide,
-    views.recordings,
+    // Every view, in the order they are declared: listing them by hand here meant a new
+    // tab could be added everywhere else and still never reach the page.
+    ...Object.values(views),
   );
 
   const savedTab = loadSetting(TAB_STORAGE_KEY);
