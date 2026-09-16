@@ -30,6 +30,11 @@
         "friendsofphp/php-cs-fixer": "^3.64",
         "phpunit/phpunit": "^11.3"
     },
+    "config": {
+        "platform": {
+            "php": "8.2"
+        }
+    },
     "scripts": {
         "test": "phpunit",
         "lint": "php-cs-fixer fix --dry-run --diff",
