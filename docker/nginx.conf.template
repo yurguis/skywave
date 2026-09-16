@@ -1,0 +1,77 @@
+# Rendered by docker/entrypoint.sh: @HTTP_PORT@, @RUNTIME_DIR@ and @AUTH_DIRECTIVES@
+# are replaced at container start. Everything writable lives in @RUNTIME_DIR@ so nginx
+# can run as a non-root user.
+
+worker_processes auto;
+pid @RUNTIME_DIR@/nginx.pid;
+error_log stderr warn;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    access_log /dev/stdout;
+    sendfile on;
+    server_tokens off;
+    client_max_body_size 64k;
+
+    client_body_temp_path @RUNTIME_DIR@/client_body;
+    proxy_temp_path @RUNTIME_DIR@/proxy;
+    fastcgi_temp_path @RUNTIME_DIR@/fastcgi;
+    uwsgi_temp_path @RUNTIME_DIR@/uwsgi;
+    scgi_temp_path @RUNTIME_DIR@/scgi;
+
+    gzip on;
+    gzip_types text/css application/javascript application/json;
+
+    server {
+        listen @HTTP_PORT@;
+        root /app/public;
+
+        add_header X-Content-Type-Options nosniff always;
+        add_header X-Frame-Options DENY always;
+        add_header Referrer-Policy same-origin always;
+        # app.js and app.css keep their names across releases; make browsers revalidate
+        # (a cheap 304 when unchanged) instead of running a stale copy after an upgrade.
+        add_header Cache-Control no-cache always;
+
+        @AUTH_DIRECTIVES@
+
+        # Health check: goes through php-fpm, needs no password, local requests only.
+        location = /fpm-ping {
+            auth_basic off;
+            allow 127.0.0.1;
+            deny all;
+            access_log off;
+            include /etc/nginx/fastcgi_params;
+            fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+            fastcgi_pass unix:@RUNTIME_DIR@/php-fpm.sock;
+        }
+
+        location / {
+            try_files $uri /index.php$is_args$args;
+        }
+
+        location = /index.php {
+            include /etc/nginx/fastcgi_params;
+            fastcgi_param SCRIPT_FILENAME $document_root/index.php;
+            fastcgi_param SCRIPT_NAME /index.php;
+            fastcgi_pass unix:@RUNTIME_DIR@/php-fpm.sock;
+            # A live stream analysis can take up to a minute.
+            fastcgi_read_timeout 120s;
+        }
+
+        # index.php is the only PHP entry point.
+        location ~ \.php$ {
+            return 404;
+        }
+
+        location ~ /\. {
+            deny all;
+        }
+    }
+}

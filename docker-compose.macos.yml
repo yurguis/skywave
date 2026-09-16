@@ -1,0 +1,27 @@
+# Docker Desktop (macOS, Windows) override: publishes the web port instead of using host
+# networking, whose port forwarding does not come back after Docker Desktop restarts.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.macos.yml up -d --build
+#
+# or set COMPOSE_FILE=docker-compose.yml:docker-compose.macos.yml in .env and use plain
+# "docker compose" commands.
+#
+# Broadcast discovery cannot reach the LAN from Docker Desktop; list tuners in
+# HDHOMERUN_DEVICES or add them by IP in the page. On macOS, Docker also needs
+# System Settings > Privacy & Security > Local Network to reach them.
+
+services:
+  web:
+    network_mode: !reset null
+    ports:
+      - "${HTTP_PORT:-8090}:${HTTP_PORT:-8090}"
+
+  # Sharing the web container's network keeps 127.0.0.1 pointing at the simulator.
+  guide:
+    network_mode: service:web
+
+  recorder:
+    network_mode: service:web
+
+  simulator:
+    network_mode: service:web

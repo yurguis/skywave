@@ -1,0 +1,5 @@
+/vendor/
+/.idea/
+/skywave.iml
+/.env
+/data/

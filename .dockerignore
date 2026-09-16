@@ -1,0 +1,17 @@
+.git
+.idea
+.claude
+*.iml
+vendor
+.env
+.env.*
+!.env.example
+docker-compose*.yml
+Dockerfile
+.dockerignore
+test.php
+
+# Captures are mounted at run time, never baked into the image.
+**/*.ts
+**/*.pcap
+**/*.pcapng

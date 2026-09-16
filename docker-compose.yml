@@ -1,0 +1,95 @@
+# Skywave
+#
+#   cp .env.example .env        # then set AUTH_PASSWORD
+#   docker compose up -d --build
+#   open http://<this-machine>:8090 and sign in as "admin"
+#
+# Without a tuner, add the simulator and a raw MPEG-TS capture (set CAPTURE_FILE in .env):
+#   docker compose --profile simulator up -d --build
+#   then add device 127.0.0.1 in the page, or set HDHOMERUN_DEVICES=127.0.0.1.
+#
+# The guide service refreshes the program guide every GUIDE_INTERVAL minutes for
+# discovered devices, HDHOMERUN_DEVICES, and devices scanned from the page.
+#
+# Host networking lets broadcast discovery reach tuners on the LAN. It works on Linux;
+# on Docker Desktop (macOS, Windows) see "Docker" in README.md.
+
+services:
+  web:
+    build: .
+    image: skywave:local
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      HTTP_PORT: ${HTTP_PORT:-8090}
+      AUTH_USER: ${AUTH_USER:-admin}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:-}
+      AUTH_DISABLED: ${AUTH_DISABLED:-}
+      HDHOMERUN_DEVICES: ${HDHOMERUN_DEVICES:-}
+      MAX_STREAMS: ${MAX_STREAMS:-2}
+      HLS_RENDITIONS: ${HLS_RENDITIONS:-720,480,360}
+      HLS_DVR_MINUTES: ${HLS_DVR_MINUTES:-5}
+      RECORDINGS_DIR: /recordings
+      RECORDING_FORMAT: ${RECORDING_FORMAT:-ts}
+      RECORDING_PAD_START: ${RECORDING_PAD_START:-60}
+      RECORDING_PAD_END: ${RECORDING_PAD_END:-180}
+      RECORDING_PLAYBACK_HEIGHT: ${RECORDING_PLAYBACK_HEIGHT:-720}
+    # Live playback rewrites video segments every 2 seconds; keep them in memory.
+    tmpfs:
+      - /tmp/hdhomerun-hls:uid=82,gid=82,mode=0700
+    volumes:
+      - guide-data:/data
+      - "${RECORDINGS_DIR:-./data/recordings}:/recordings"
+
+  guide:
+    build: .
+    image: skywave:local
+    network_mode: host
+    restart: unless-stopped
+    # The image's health check probes the web UI, which this container does not run.
+    healthcheck:
+      disable: true
+    command: ["php", "tools/guide.php", "run", "--interval=${GUIDE_INTERVAL:-240}"]
+    environment:
+      HDHOMERUN_DEVICES: ${HDHOMERUN_DEVICES:-}
+    volumes:
+      - guide-data:/data
+
+  # Runs what the page schedules, whether or not anybody has the page open.
+  recorder:
+    build: .
+    image: skywave:local
+    network_mode: host
+    restart: unless-stopped
+    # The image's health check probes the web UI, which this container does not run.
+    healthcheck:
+      disable: true
+    command: ["php", "tools/recorder.php", "run", "--tick=${RECORDER_TICK:-10}"]
+    environment:
+      RECORDINGS_DIR: /recordings
+      RECORDING_HEIGHT: ${RECORDING_HEIGHT:-720}
+    volumes:
+      - guide-data:/data
+      - "${RECORDINGS_DIR:-./data/recordings}:/recordings"
+
+  simulator:
+    profiles: [simulator]
+    build: .
+    image: skywave:local
+    network_mode: host
+    restart: unless-stopped
+    # The image's health check probes the web UI, which this container does not run.
+    healthcheck:
+      disable: true
+    command:
+      - php
+      - tools/fake-hdhomerun.php
+      - --bind=${SIMULATOR_BIND:-127.0.0.1}
+      - --capture=/captures/capture.ts
+      - --capture-channel=${CAPTURE_CHANNEL:-33}
+    volumes:
+      # Set CAPTURE_FILE in .env; without it the simulator exits with "too short to replay".
+      - ${CAPTURE_FILE:-/dev/null}:/captures/capture.ts:ro
+
+volumes:
+  guide-data:
