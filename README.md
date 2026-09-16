@@ -280,6 +280,9 @@ Settings (environment variables):
 | `RECORDING_PLAYBACK_HEIGHT` | `720` | Picture height when converting a `ts` recording for watching |
 | `RECORDING_PAD_START` / `RECORDING_PAD_END` | `60` / `180` | Seconds recorded before and after a program |
 | `RECORDER_TICK` | `10` | Seconds between recorder checks for due recordings |
+| `TLS_DIR` | `./certs` | Folder holding the certificate and key, mounted read-only at `/certs` |
+| `TLS_PORT` | `8443` | Port HTTPS listens on, when a certificate is present |
+| `TLS_CERT` / `TLS_KEY` | `/certs/fullchain.pem` / `/certs/privkey.pem` | Where in the container to read them |
 
 On Docker Desktop (macOS, Windows), host networking is limited: its port forwarding does
 not come back after Docker Desktop restarts, and broadcast discovery will not reach your
@@ -294,9 +297,48 @@ docker compose up -d --build
 On macOS, also allow Docker in System Settings → Privacy & Security → Local Network,
 then restart Docker Desktop; without it, connections to tuners fail with "no route to host".
 
-For access from outside your home, put the container behind a VPN (WireGuard,
-Tailscale) or an HTTPS reverse proxy. Basic auth over plain HTTP sends the password
-readable to anyone on the path.
+### HTTPS
+
+Point `TLS_DIR` at a folder holding a certificate and its key, and the UI serves HTTPS on
+`TLS_PORT` as well as plain HTTP on `HTTP_PORT`. Plain HTTP keeps listening because the
+container's health check uses it; nothing is redirected, so the local network can carry on
+using either. With no certificate mounted, nothing listens on the TLS port at all.
+
+```bash
+mkdir certs        # then put fullchain.pem and privkey.pem in it
+docker compose up -d
+```
+
+**A certificate browsers trust.** Ask a public authority for one, using the DNS-01
+challenge so nothing needs to reach your machine from outside:
+
+```bash
+certbot certonly --dns-cloudflare \
+    --dns-cloudflare-credentials ~/.secrets/cloudflare.ini \
+    -d skywave.example.com
+```
+
+Copy (or symlink) the issued `fullchain.pem` and `privkey.pem` into `TLS_DIR`. Certificates
+last 90 days, so renewal needs to be automatic, and nginx only reads them at start: run
+`docker compose restart web` from the renewal hook.
+
+**Reaching it by name on your own network.** A certificate is issued for a name, not an
+address, so `https://192.168.1.50:8443` will always warn. Point your router's DNS at the
+machine for that name, and the same certificate is trusted at home and away — with the
+difference that traffic at home never leaves the house.
+
+**Without a domain**, [mkcert](https://github.com/FiloSottile/mkcert) issues a certificate
+your own machines trust, once its authority is installed on each of them. That is enough
+for a laptop and awkward for a television.
+
+**Behind Cloudflare**, a publicly trusted certificate is what "Full (strict)" wants. Their
+own Origin CA certificates work there too, but browsers do not trust those, so the warning
+comes back on your own network. "Flexible" asks for no certificate at all and sends
+everything to your door in the clear.
+
+For access from outside your home, put the container behind a VPN (WireGuard, Tailscale)
+or reach it over HTTPS as above. Basic auth over plain HTTP sends the password readable to
+anyone on the path.
 
 ## Limitations
 

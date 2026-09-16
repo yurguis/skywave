@@ -57,6 +57,23 @@ else
     exit 1
 fi
 
+# HTTPS, when a certificate and key are readable. Plain HTTP keeps listening either way:
+# it is what the health check and the local network use, and a redirect would break both.
+TLS_PORT="${TLS_PORT:-8443}"
+TLS_CERT="${TLS_CERT:-/certs/fullchain.pem}"
+TLS_KEY="${TLS_KEY:-/certs/privkey.pem}"
+TLS_LISTEN=""
+
+case "$TLS_PORT" in
+    '' | *[!0-9]*) echo "TLS_PORT must be a port number, got: $TLS_PORT" >&2; exit 1 ;;
+esac
+
+if [ -r "$TLS_CERT" ] && [ -r "$TLS_KEY" ]; then
+    TLS_LISTEN="listen $TLS_PORT ssl; http2 on; ssl_certificate $TLS_CERT; ssl_certificate_key $TLS_KEY; ssl_protocols TLSv1.2 TLSv1.3; ssl_prefer_server_ciphers off; ssl_session_cache shared:TLS:2m; ssl_session_timeout 1h;"
+elif [ -e "$TLS_CERT" ] || [ -e "$TLS_KEY" ]; then
+    echo "WARNING: $TLS_CERT and $TLS_KEY are not both readable; serving plain HTTP only." >&2
+fi
+
 # php-fpm keeps the environment for PHP (HDHOMERUN_DEVICES); the password must not be in it.
 unset AUTH_PASSWORD AUTH_PASSWORD_FILE
 
@@ -64,6 +81,7 @@ sed -e "s|@HTTP_PORT@|$HTTP_PORT|g" \
     -e "s|@RUNTIME_DIR@|$RUNTIME_DIR|g" \
     -e "s|@AUTH_DIRECTIVES@|$AUTH_DIRECTIVES|" \
     -e "s|@ACCESS_LOG@|$ACCESS_LOG|" \
+    -e "s|@TLS_LISTEN@|$TLS_LISTEN|" \
     /etc/hdhomerun/nginx.conf.template > "$RUNTIME_DIR/nginx.conf"
 
 php-fpm --nodaemonize &
@@ -86,7 +104,11 @@ stop() {
 
 trap 'stop; exit 0' TERM INT QUIT
 
-echo "Skywave listening on port $HTTP_PORT"
+if [ -n "$TLS_LISTEN" ]; then
+    echo "Skywave listening on port $HTTP_PORT, and on $TLS_PORT with TLS"
+else
+    echo "Skywave listening on port $HTTP_PORT"
+fi
 
 set +e
 while kill -0 "$FPM_PID" 2>/dev/null && kill -0 "$NGINX_PID" 2>/dev/null; do

@@ -5,3 +5,8 @@
 /data/
 /.phpunit.cache/
 /.php-cs-fixer.cache
+/certs/
+
+# Certificates and keys, wherever they are put.
+*.pem
+*.key

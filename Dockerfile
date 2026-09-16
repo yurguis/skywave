@@ -40,7 +40,7 @@ USER www-data
 # The guide database; mount a volume at /data to keep it across containers.
 ENV HTTP_PORT=8080 \
     GUIDE_DB=/data/guide.sqlite
-EXPOSE 8080
+EXPOSE 8080 8443
 
 # The php-fpm base image stops containers with SIGQUIT; the entrypoint shell (and the
 # simulator) expect SIGTERM, which Docker otherwise only follows with a SIGKILL.

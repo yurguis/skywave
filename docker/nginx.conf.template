@@ -33,6 +33,9 @@ http {
 
     server {
         listen @HTTP_PORT@;
+        # TLS is served from the same place when a certificate is given; the entrypoint
+        # leaves this empty when there is none, so the port keeps working without one.
+        @TLS_LISTEN@
         root /app/public;
 
         add_header X-Content-Type-Options nosniff always;

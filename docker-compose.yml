@@ -34,12 +34,18 @@ services:
       RECORDING_PAD_START: ${RECORDING_PAD_START:-60}
       RECORDING_PAD_END: ${RECORDING_PAD_END:-180}
       RECORDING_PLAYBACK_HEIGHT: ${RECORDING_PLAYBACK_HEIGHT:-720}
+      # HTTPS is served as well as HTTP when a certificate and key are mounted below.
+      TLS_PORT: ${TLS_PORT:-8443}
+      TLS_CERT: ${TLS_CERT:-/certs/fullchain.pem}
+      TLS_KEY: ${TLS_KEY:-/certs/privkey.pem}
     # Live playback rewrites video segments every 2 seconds; keep them in memory.
     tmpfs:
       - /tmp/hdhomerun-hls:uid=82,gid=82,mode=0700
     volumes:
       - guide-data:/data
       - "${RECORDINGS_DIR:-./data/recordings}:/recordings"
+      # Read-only: nothing here writes certificates, it only reads them.
+      - "${TLS_DIR:-./certs}:/certs:ro"
 
   guide:
     build: .
