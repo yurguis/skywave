@@ -35,17 +35,23 @@ class MultipleStringStructure
 
             for ($j = 0; $j < $numberSegments; $j++) {
                 $compressionType = $reader->uint8();
-                if ($compressionType !== 0) {
+                $mode            = $reader->uint8();
+                $numberBytes     = $reader->uint8();
+                $segment         = $reader->bytes($numberBytes);
+
+                // Compressed segments and other character modes are not decoded here, but
+                // their bytes are still read: skipping them without consuming the segment
+                // leaves every string after this one being read from the wrong offset.
+                if ($compressionType !== 0 || $mode !== 0) {
                     continue;
                 }
 
-                $mode = $reader->uint8();
-                if ($mode !== 0) {
-                    continue;
-                }
-
-                $numberBytes              = $reader->uint8();
-                $this->strings[$language] = $reader->bytes($numberBytes);
+                // Mode 0x00 means each byte is a code point between 0x00 and 0x00FF, which
+                // is how a broadcast sends "Cafe\xE9". Handed on as-is those bytes are not
+                // valid UTF-8, and the page shows a replacement character instead of the
+                // accent. A string may also arrive in several segments, which join up.
+                $this->strings[$language] = ($this->strings[$language] ?? '')
+                    . mb_convert_encoding($segment, 'UTF-8', 'ISO-8859-1');
             }
         }
     }
