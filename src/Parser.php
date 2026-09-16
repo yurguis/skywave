@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -150,7 +152,7 @@ class Parser
         }
 
         $transportError = $reader->bits(1); // transport_error_indicator
-        $pusi = $reader->bits(1);         // payload_unit_start_indicator
+        $pusi           = $reader->bits(1);         // payload_unit_start_indicator
         $reader->skipBits(1);             // transport_priority
         $pid = $reader->bits(13);
 
@@ -325,6 +327,7 @@ class Parser
         $section = $this->createSection($pid, $tableId, $sectionLength, $cc, $payload);
         if ($section === null) {
             unset($this->inProgress[$pid]);
+
             return;
         }
 
@@ -338,6 +341,7 @@ class Parser
         }
         if ($cc !== $this->inProgress[$pid]->getNextSection()) {
             unset($this->inProgress[$pid]); // Drop on CC discontinuity.
+
             return;
         }
 
@@ -400,28 +404,34 @@ class Parser
         if ($section instanceof ProgramAssociationTable) {
             $this->programAssociationTable = $section;
             $this->registerPmtPids();
+
             return;
         }
         if ($section instanceof ProgramMapTable) {
             $this->programMapTables[$pid] = $section;
             $this->registerElementaryStreamPids($section);
+
             return;
         }
         if ($section instanceof MasterGuideTable) {
             $this->masterGuideTable = $section;
             $this->registerPidsFromMgt();
+
             return;
         }
         if ($section instanceof VirtualChannelTable) {
             $this->virtualChannelTable = $section;
+
             return;
         }
         if ($section instanceof SystemTimeTable) {
             $this->systemTimeTable = $section;
+
             return;
         }
         if ($section instanceof EventInformationTable) {
             $this->stashEit($pid, $section);
+
             return;
         }
         if ($section instanceof ExtendedTextTable) {
@@ -437,14 +447,17 @@ class Parser
             switch ($stream->getType()) {
                 case Stream::TYPE_AC3:
                     $this->addUnique($this->ac3Pids, $pid);
+
                     break;
 
                 case Stream::TYPE_MPEG2_VIDEO:
                     $this->addUnique($this->mpeg2VideoPids, $pid);
+
                     break;
 
                 case Stream::TYPE_AVC_VIDEO:
                     $this->addUnique($this->avcVideoPids, $pid);
+
                     break;
             }
         }
@@ -519,6 +532,7 @@ class Parser
 
         if ($ett->isEventEtm()) {
             $this->eventDescriptions[$ett->getSourceId()][$ett->getEventId()] = $text;
+
             return;
         }
         if ($ett->isChannelEtm()) {

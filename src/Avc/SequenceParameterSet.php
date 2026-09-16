@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -63,7 +65,9 @@ class SequenceParameterSet
     /** Display aspect ratio width/height ratio (e.g. 16/9 ~= 1.778) when computable. */
     private ?float $displayAspectRatio = null;
 
-    private function __construct() {}
+    private function __construct()
+    {
+    }
 
     /**
      * Find an SPS NAL in $bytes, un-stuff its RBSP, decode the fields we need.
@@ -111,6 +115,7 @@ class SequenceParameterSet
 
             if ($nalUnitType !== self::NAL_TYPE_SPS) {
                 $offset = $nalHeaderPos;
+
                 continue;
             }
 
@@ -144,7 +149,7 @@ class SequenceParameterSet
         while ($i < $len) {
             if ($i + 2 < $len && $ebsp[$i] === "\x00" && $ebsp[$i + 1] === "\x00" && $ebsp[$i + 2] === "\x03") {
                 $result .= "\x00\x00";
-                $i      += 3;
+                $i += 3;
 
                 continue;
             }
@@ -163,7 +168,7 @@ class SequenceParameterSet
 
         $sps->profileIdc = $r->bits(8);
         $r->bits(8); // constraint_setN_flag (6) + reserved (2)
-        $sps->levelIdc  = $r->bits(8);
+        $sps->levelIdc = $r->bits(8);
         $r->ue();    // seq_parameter_set_id
 
         if (in_array($sps->profileIdc, self::HIGH_PROFILE_IDCS, true)) {

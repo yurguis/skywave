@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -12,12 +14,12 @@ use Skywave\Ac3\SyncFrame;
 use Skywave\Avc\SequenceParameterSet;
 use Skywave\Channel;
 use Skywave\Descriptor\Ac3AudioStreamDescriptor;
-use Skywave\Mpeg2\SequenceHeader;
 use Skywave\Descriptor\CaptionServiceDescriptor;
 use Skywave\Descriptor\ContentAdvisoryDescriptor;
 use Skywave\Descriptor\ExtendedChannelNameDescriptor;
 use Skywave\Descriptor\ServiceLocationDescriptor;
 use Skywave\Event;
+use Skywave\Mpeg2\SequenceHeader;
 use Skywave\Parser;
 use Skywave\Stream;
 use Skywave\TableEntry;
@@ -53,7 +55,7 @@ class ConsoleRenderer
             return '';
         }
 
-        $out  = sprintf(
+        $out = sprintf(
             "  Transport-level Programs (PAT / PMT)  -  TSID 0x%04X  (PAT v%d)\n",
             $pat->getTransportStreamId(),
             $pat->getVersionNumber()
@@ -69,6 +71,7 @@ class ConsoleRenderer
             $pmt = $parser->getProgramMapTable($pmtPid);
             if ($pmt === null) {
                 $out .= sprintf("  Program %-3d  PMT 0x%04X  (not captured)\n", $programNumber, $pmtPid);
+
                 continue;
             }
             $out .= sprintf(
@@ -104,7 +107,7 @@ class ConsoleRenderer
     private function renderStreamDetails(Stream $stream, Parser $parser): string
     {
         $detailIndent = '              ';
-        $out = '';
+        $out          = '';
 
         $descriptors = $stream->getDescriptors();
 
@@ -228,7 +231,7 @@ class ConsoleRenderer
         }
 
         $entries = $mgt->getEntries();
-        $out  = sprintf("  Master Guide Table  (%d entries)\n", count($entries));
+        $out     = sprintf("  Master Guide Table  (%d entries)\n", count($entries));
         $out .= '  ' . self::LIGHT_RULE . "\n";
         $out .= sprintf("  %-22s %-7s %7s %9s\n", 'Type', 'PID', 'Version', 'Bytes');
 
@@ -286,7 +289,7 @@ class ConsoleRenderer
     private function renderChannelDetails(Channel $channel, Parser $parser): string
     {
         $descriptors = $channel->getDescriptors();
-        $out = '';
+        $out         = '';
 
         $ecn = $descriptors[ExtendedChannelNameDescriptor::DESCRIPTOR_NAME] ?? null;
         if ($ecn instanceof ExtendedChannelNameDescriptor) {
@@ -299,7 +302,7 @@ class ConsoleRenderer
 
             $streams = $sld->getStreams();
             if ($streams !== []) {
-                $out  .= '           Streams:';
+                $out .= '           Streams:';
                 $first = true;
                 foreach ($streams as $stream) {
                     $prefix = $first ? '    ' : '                       ';
@@ -315,10 +318,10 @@ class ConsoleRenderer
 
         $channelDescription = $parser->getChannelDescription($channel->getSourceId());
         if ($channelDescription !== null && $channelDescription !== '') {
-            $indent  = str_repeat(' ', 11);
-            $out    .= $indent . "About:\n";
+            $indent = str_repeat(' ', 11);
+            $out .= $indent . "About:\n";
             $wrapped = wordwrap($channelDescription, 70, "\n" . $indent . '  ', true);
-            $out    .= $indent . '  ' . $wrapped . "\n";
+            $out .= $indent . '  ' . $wrapped . "\n";
         }
 
         return $out;
@@ -341,7 +344,7 @@ class ConsoleRenderer
         $stt    = $parser->getSystemTimeTable();
         $offset = $stt !== null ? $stt->getGpsUtcOffset() : 0;
 
-        $out  = "  Event Information\n";
+        $out = "  Event Information\n";
         $out .= '  ' . self::LIGHT_RULE . "\n";
 
         foreach ($tvct->getChannels() as $channel) {
@@ -375,6 +378,7 @@ class ConsoleRenderer
         // Aligns under the title column: 4 (indent) + 16 (date) + 2 + 7 (duration field) + 2 = 31.
         $indent  = str_repeat(' ', 31);
         $wrapped = wordwrap($text, 68, "\n" . $indent, true);
+
         return $indent . $wrapped . "\n";
     }
 
@@ -388,6 +392,7 @@ class ConsoleRenderer
                 return true;
             }
         }
+
         return false;
     }
 
@@ -419,6 +424,7 @@ class ConsoleRenderer
         if (!$cad instanceof ContentAdvisoryDescriptor) {
             return null;
         }
+
         return $cad->getUsRatingLabel();
     }
 
@@ -430,6 +436,7 @@ class ConsoleRenderer
         }
         $h = intdiv($totalMin, 60);
         $m = $totalMin % 60;
+
         return $m === 0 ? sprintf('%dh', $h) : sprintf('%dh%dm', $h, $m);
     }
 
@@ -438,6 +445,7 @@ class ConsoleRenderer
         if (mb_strlen($s) <= $width) {
             return $s;
         }
+
         return mb_substr($s, 0, $width - 1) . '~';
     }
 }

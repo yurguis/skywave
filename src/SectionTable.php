@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -35,7 +37,7 @@ abstract class SectionTable
             return;
         }
 
-        $needed        = $this->sectionLength - strlen($this->buffer);
+        $needed = $this->sectionLength - strlen($this->buffer);
         $this->buffer .= substr($chunk, 0, $needed);
 
         // Caller has already verified that this chunk's CC == getNextSection(),

@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -89,14 +91,17 @@ function runDeviceCommand(array $args): int
     switch ($command) {
         case 'info':
             printInfo($device);
+
             break;
 
         case 'get':
             echo $device->getControl()->get($params[0]), "\n";
+
             break;
 
         case 'set':
             $device->getControl()->set($params[0], $params[1]);
+
             break;
 
         case 'status':
@@ -105,6 +110,7 @@ function runDeviceCommand(array $args): int
             foreach ($tuners as $tuner) {
                 printTunerStatus($tuner);
             }
+
             break;
 
         case 'tune':
@@ -112,6 +118,7 @@ function runDeviceCommand(array $args): int
             $tuner->setChannel($params[1]);
             $tuner->waitForLock();
             printTunerStatus($tuner);
+
             break;
     }
 

@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -16,7 +18,7 @@ class SequenceParameterSetSampler
     /** SPS NALs are small but may not appear in the first PES. Keep a generous window. */
     private const MAX_BUFFER_BYTES = 32768;
 
-    private string $buffer = '';
+    private string $buffer             = '';
     private ?SequenceParameterSet $sps = null;
 
     public function feed(string $payload, bool $payloadUnitStart): void

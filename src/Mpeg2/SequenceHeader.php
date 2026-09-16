@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -97,10 +99,10 @@ class SequenceHeader
         }
 
         $offset = $headerPos + 4;
-        $b0 = ord($bytes[$offset]);
-        $b1 = ord($bytes[$offset + 1]);
-        $b2 = ord($bytes[$offset + 2]);
-        $b3 = ord($bytes[$offset + 3]);
+        $b0     = ord($bytes[$offset]);
+        $b1     = ord($bytes[$offset + 1]);
+        $b2     = ord($bytes[$offset + 2]);
+        $b3     = ord($bytes[$offset + 3]);
 
         $width           = ($b0 << 4) | (($b1 >> 4) & 0xF);
         $height          = (($b1 & 0xF) << 8) | $b2;
@@ -137,7 +139,7 @@ class SequenceHeader
             return [false, null, null];
         }
 
-        $pli = (($eb0 & 0xF) << 4) | (($eb1 >> 4) & 0xF);
+        $pli         = (($eb0 & 0xF) << 4) | (($eb1 >> 4) & 0xF);
         $progressive = (($eb1 >> 3) & 0x1) === 1;
 
         return [$progressive, ($pli >> 4) & 0x7, $pli & 0xF];

@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -17,7 +19,7 @@ class ExtendedChannelNameDescriptor
     public function __construct(string $data)
     {
         $multipleStringStructure = new MultipleStringStructure($data);
-        $strings = $multipleStringStructure->getStrings();
+        $strings                 = $multipleStringStructure->getStrings();
         if ($strings === []) {
             return;
         }

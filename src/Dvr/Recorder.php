@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -6,10 +8,10 @@
 namespace Skywave\Dvr;
 
 use RuntimeException;
-use Throwable;
 use Skywave\Hdhomerun\Device;
 use Skywave\Hdhomerun\Exception\HdhomerunException;
 use Skywave\Hdhomerun\Tuner;
+use Throwable;
 
 /**
  * Starts, watches and stops recordings.
@@ -410,6 +412,7 @@ class Recorder
 
             if ($held !== null) {
                 $reasons[] = "tuner $index: {$held['label']}";
+
                 continue;
             }
 
@@ -422,15 +425,18 @@ class Recorder
 
                 if ($target !== 'none') {
                     $reasons[] = "tuner $index: streaming to $target";
+
                     continue;
                 }
 
                 if (!in_array($owner, [null, 'none'], true)) {
                     $reasons[] = "tuner $index: locked by $owner";
+
                     continue;
                 }
             } catch (HdhomerunException $e) {
                 $reasons[] = "tuner $index: {$e->getMessage()}";
+
                 continue;
             }
 
@@ -574,10 +580,10 @@ class Recorder
         $bytes = is_file($file) ? (int) filesize($file) : 0;
 
         $this->store->updateRecording($recording['id'], [
-            'status'        => $status,
-            'endedAt'       => time(),
-            'bytes'         => $bytes,
-            'error'         => $error,
+            'status'  => $status,
+            'endedAt' => time(),
+            'bytes'   => $bytes,
+            'error'   => $error,
             // The request has been carried out; leaving it set would read as "stopping".
             'stopRequested' => null,
         ]);

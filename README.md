@@ -205,6 +205,12 @@ docker compose up -d --build
 Open `http://<this-machine>:8090` and sign in as `admin`. The container uses host
 networking so broadcast discovery can reach tuners on your LAN.
 
+Everything the page remembers — the channel scan, the guide, station logos, and every
+scheduled and past recording — lives in the `guide-data` Docker volume, not in the project
+folder. `docker compose down` keeps it. **`docker compose down -v` deletes it**, taking the
+guide and every schedule with it. The recordings themselves are safe either way: they live
+in `RECORDINGS_DIR`.
+
 Without a tuner, set `CAPTURE_FILE` in `.env` to a raw MPEG-TS recording and start the
 simulator too, then add device `127.0.0.1` in the page:
 
@@ -250,6 +256,23 @@ then restart Docker Desktop; without it, connections to tuners fail with "no rou
 For access from outside your home, put the container behind a VPN (WireGuard,
 Tailscale) or an HTTPS reverse proxy. Basic auth over plain HTTP sends the password
 readable to anyone on the path.
+
+## Limitations
+
+- **One viewer per tuner.** Two people cannot share a tuner, so a four-tuner device serves
+  four programs at once, recordings included. Skywave picks a free tuner and says so
+  plainly when there is none.
+- **ATSC 1.0 only.** ATSC 3.0 channels appear in a scan but cannot be watched or recorded:
+  the device does not send them as MPEG-TS.
+- **Nothing is ever deleted for you.** The Recordings tab warns when the drive runs low and
+  refuses to start a recording below 2 GB free, but making room is yours to do.
+- **Every conversion runs on this machine.** HDHomeRun tuners do not transcode, so each
+  viewer watching a different program costs CPU here.
+- **One showing at a time.** Recordings are scheduled per showing; there is no series rule
+  yet.
+- **The guide comes from the broadcast**, so it reaches about 12 hours ahead and covers
+  only what your antenna receives. Station logos are the one thing fetched from the
+  internet, once, and then served locally.
 
 ## License
 

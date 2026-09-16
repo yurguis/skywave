@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -39,7 +41,7 @@ class VirtualChannelTable extends SectionTable
             $majorChannelNumber = $reader->bits(10);
             $minorChannelNumber = $reader->bits(10);
 
-            $modulationMode  = $reader->uint8();
+            $modulationMode   = $reader->uint8();
             $carrierFrequency = $reader->uint32();
 
             $reader->skipBytes(2); // channel_TSID

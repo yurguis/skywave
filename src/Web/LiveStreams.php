@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -52,7 +54,7 @@ class LiveStreams
      */
     public function __construct(string $directory, int $maxStreams = 2, int $viewerTimeout = 30, array $renditions = [720, 480, 360], string $ffmpeg = 'ffmpeg', int $rewindMinutes = 5)
     {
-        $heights = array_values(array_unique(array_map(fn($height) => max(144, min(2160, (int) $height)), $renditions)));
+        $heights = array_values(array_unique(array_map(fn ($height) => max(144, min(2160, (int) $height)), $renditions)));
         rsort($heights);
 
         $this->directory     = rtrim($directory, '/');
@@ -205,7 +207,7 @@ class LiveStreams
         return $this->locked(function (): array {
             $this->reap();
 
-            return array_map(fn(array $session) => $this->describe($session), $this->loadAll());
+            return array_map(fn (array $session) => $this->describe($session), $this->loadAll());
         });
     }
 
@@ -266,10 +268,10 @@ class LiveStreams
             'renditions'      => count($this->renditions),
             // Kept so the player can name each track; the playlist only ever says stereo,
             // because that is what every one of them is converted to.
-            'audio'           => array_values($audioTracks),
-            'startedAt'       => time(),
-            'endedAt'         => null,
-            'viewers'         => [],
+            'audio'     => array_values($audioTracks),
+            'startedAt' => time(),
+            'endedAt'   => null,
+            'viewers'   => [],
         ];
     }
 
@@ -292,17 +294,17 @@ class LiveStreams
         // deinterlace it once, then scale a copy per rendition. estdif deinterlaces from a
         // single frame; temporal deinterlacers (yadif, bwdif) scramble and delay the closed
         // captions that travel with each frame.
-        $graph   = ["[0:p:$program:v:0]estdif=mode=frame:deint=interlaced,split=$count"
-            . implode('', array_map(fn(int $i) => "[s$i]", array_keys($this->renditions)))];
+        $graph = ["[0:p:$program:v:0]estdif=mode=frame:deint=interlaced,split=$count"
+            . implode('', array_map(fn (int $i) => "[s$i]", array_keys($this->renditions)))];
         $outputs = [];
         $streams = [];
 
         foreach ($this->renditions as $i => $height) {
             // Lower renditions shrink in proportion to the source, so an SD channel gets
             // 480/320/240 rather than three copies of 480.
-            $graph[]   = sprintf('[s%d]scale=w=-2:h=trunc(min(%d\,ih*%d/%d)/2)*2[v%d]', $i, $height, $height, $top, $i);
-            $maxrate   = self::maxBitrate($height);
-            $outputs   = array_merge($outputs, [
+            $graph[] = sprintf('[s%d]scale=w=-2:h=trunc(min(%d\,ih*%d/%d)/2)*2[v%d]', $i, $height, $height, $top, $i);
+            $maxrate = self::maxBitrate($height);
+            $outputs = array_merge($outputs, [
                 '-map', "[v$i]",
                 "-maxrate:v:$i", "{$maxrate}k", "-bufsize:v:$i", ($maxrate * 2) . 'k',
             ]);
@@ -386,7 +388,7 @@ class LiveStreams
                 continue;
             }
 
-            $active = array_filter($session['viewers'], fn(int $seen) => $now - $seen <= $this->viewerTimeout);
+            $active = array_filter($session['viewers'], fn (int $seen) => $now - $seen <= $this->viewerTimeout);
 
             if ($active === []) {
                 $this->terminate($session, true);
@@ -608,7 +610,7 @@ class LiveStreams
     {
         $lines = array_filter(
             @file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [],
-            fn(string $line) => !preg_match('/Invalid frame dimensions 0x0|Last message repeated|corrupt decoded frame/', $line)
+            fn (string $line) => !preg_match('/Invalid frame dimensions 0x0|Last message repeated|corrupt decoded frame/', $line)
         );
 
         return $lines === [] ? null : (string) end($lines);

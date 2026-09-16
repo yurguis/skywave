@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -7,8 +9,6 @@ namespace Skywave\Web;
 
 use InvalidArgumentException;
 use RuntimeException;
-use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Component\HttpFoundation\Request;
 use Skywave\Dvr\Recorder;
 use Skywave\Dvr\RecordingPlayback;
 use Skywave\Dvr\RecordingStore;
@@ -28,6 +28,8 @@ use Skywave\Hdhomerun\StreamAnalyzer;
 use Skywave\Hdhomerun\StreamProgram;
 use Skywave\Hdhomerun\Tuner;
 use Skywave\Report\JsonRenderer;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Request;
 
 /**
  * JSON API behind the web UI.
@@ -252,7 +254,7 @@ class Api
         // Devices added from any browser, the ones configured for this server, and whatever
         // the caller asked about; a browser that has not caught up still sees its own.
         $requested = array_merge($this->configuredHosts, $this->rememberedDevices(), explode(',', $hostsParameter));
-        $hosts     = array_unique(array_filter(array_map('trim', $requested), fn(string $host) => $host !== ''));
+        $hosts     = array_unique(array_filter(array_map('trim', $requested), fn (string $host) => $host !== ''));
         $invalid   = [];
 
         foreach ($hosts as $host) {
@@ -261,6 +263,7 @@ class Api
                 self::validateHost($host);
             } catch (ApiException $e) {
                 $invalid[] = ['host' => $host, 'source' => 'manual', 'deviceId' => null, 'error' => $e->getMessage()];
+
                 continue;
             }
 
@@ -333,7 +336,7 @@ class Api
         $held    = $host === null || $this->reservations === null ? null : $this->reservations->find($host, $tuner->getIndex());
 
         return [
-            'index'           => $tuner->getIndex(),
+            'index' => $tuner->getIndex(),
             // What this application is using the tuner for, which the device cannot know.
             'reservedBy'      => $held === null ? null : $held['label'],
             'channel'         => $status->getChannel(),
@@ -352,24 +355,24 @@ class Api
                 'symbolQuality'      => $status->getSymbolErrorQuality(),
                 'symbolQualityColor' => $status->getSymbolErrorQualityColor(),
             ],
-            'bitsPerSecond'   => $status->getBitsPerSecond(),
+            'bitsPerSecond'    => $status->getBitsPerSecond(),
             'packetsPerSecond' => $status->getPacketsPerSecond(),
-            'target'          => $tuner->getTarget(),
-            'lockOwner'       => $tuner->getLockOwner(),
-            'virtualChannel'  => $virtual === null || $virtual->getVirtualChannel() === '' ? null : [
+            'target'           => $tuner->getTarget(),
+            'lockOwner'        => $tuner->getLockOwner(),
+            'virtualChannel'   => $virtual === null || $virtual->getVirtualChannel() === '' ? null : [
                 'channel' => $virtual->getVirtualChannel(),
                 'name'    => $virtual->getName(),
             ],
-            'streamInfo'      => $info === null ? null : [
+            'streamInfo' => $info === null ? null : [
                 'transportStreamId' => $info->getTransportStreamId(),
-                'programs'          => array_map(fn(StreamProgram $program) => [
+                'programs'          => array_map(fn (StreamProgram $program) => [
                     'number'         => $program->getProgramNumber(),
                     'virtualChannel' => $program->getVirtualChannel(),
                     'name'           => $program->getName(),
                     'type'           => $program->getType(),
                 ], $info->getPrograms()),
             ],
-            'raw'             => $status->getRaw(),
+            'raw' => $status->getRaw(),
         ];
     }
 
@@ -551,7 +554,7 @@ class Api
         }
 
         $networks = array_unique(array_map(
-            fn(string $host) => implode('.', array_slice(explode('.', $host), 0, 3)),
+            fn (string $host) => implode('.', array_slice(explode('.', $host), 0, 3)),
             $seeds
         ));
 
@@ -741,7 +744,7 @@ class Api
             $free = $this->recorder === null ? false : @disk_free_space($this->recorder->getDirectory());
 
             return [
-                'directory'     => $this->recorder === null ? null : $this->recorder->getDirectory(),
+                'directory' => $this->recorder === null ? null : $this->recorder->getDirectory(),
                 // Recordings are large and the drive they live on may not even be attached.
                 'freeBytes'     => $free === false ? null : (int) $free,
                 'formats'       => RecordingStore::FORMATS,

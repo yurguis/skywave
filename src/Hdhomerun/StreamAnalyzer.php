@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -62,13 +64,14 @@ class StreamAnalyzer
                     throw new StreamException('The device did not send an MPEG-TS stream (ATSC 3.0 is not supported here yet)', true);
                 }
 
-                $bytes  += strlen($chunk);
+                $bytes += strlen($chunk);
                 $buffer .= $chunk;
-                $offset  = 0;
+                $offset = 0;
 
                 for (; $offset + self::PACKET_SIZE <= strlen($buffer); $offset += self::PACKET_SIZE) {
                     if ($parser->analyze(substr($buffer, $offset, self::PACKET_SIZE)) === Parser::RETURN_TYPE_DONE) {
                         $done = true;
+
                         break;
                     }
                 }

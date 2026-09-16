@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -67,28 +69,33 @@ class DiscoveredDevice
                     if (strlen($value) === 4) {
                         $deviceTypes[] = unpack('N', $value)[1];
                     }
+
                     break;
 
                 case Packet::TAG_MULTI_TYPE:
                     for ($i = 0; $i + 4 <= strlen($value); $i += 4) {
                         $deviceTypes[] = unpack('N', $value, $i)[1];
                     }
+
                     break;
 
                 case Packet::TAG_DEVICE_ID:
                     if (strlen($value) === 4) {
                         $deviceId = unpack('N', $value)[1];
                     }
+
                     break;
 
                 case Packet::TAG_TUNER_COUNT:
                     if (strlen($value) === 1) {
                         $tunerCount = ord($value);
                     }
+
                     break;
 
                 case Packet::TAG_DEVICE_AUTH_STR:
                     $deviceAuth ??= Packet::cString($value);
+
                     break;
 
                 case Packet::TAG_DEVICE_AUTH_BIN_DEPRECATED:
@@ -96,29 +103,34 @@ class DiscoveredDevice
                     if (strlen($value) === 18) {
                         $deviceAuth ??= strtr(base64_encode($value), '+/', '-_');
                     }
+
                     break;
 
                 case Packet::TAG_BASE_URL:
                     $baseUrl ??= Packet::cString($value);
+
                     break;
 
                 case Packet::TAG_LINEUP_URL:
                     $lineupUrl ??= Packet::cString($value);
+
                     break;
 
                 case Packet::TAG_STORAGE_ID:
                     $storageId ??= Packet::cString($value);
+
                     break;
 
                 case Packet::TAG_STORAGE_URL:
                     $storageUrl ??= Packet::cString($value);
+
                     break;
             }
         }
 
         $deviceTypes = array_values(array_unique(array_filter(
             $deviceTypes,
-            fn(int $type) => $type !== 0 && $type !== Packet::DEVICE_TYPE_WILDCARD
+            fn (int $type) => $type !== 0 && $type !== Packet::DEVICE_TYPE_WILDCARD
         )));
         sort($deviceTypes);
 
@@ -132,12 +144,14 @@ class DiscoveredDevice
                 switch ($deviceId >> 20) {
                     case 0x102:
                         $tunerCount = 1;
+
                         break;
 
                     case 0x100:
                     case 0x101:
                     case 0x121:
                         $tunerCount = 2;
+
                         break;
                 }
             }

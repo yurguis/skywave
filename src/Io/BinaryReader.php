@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -24,7 +26,7 @@ class BinaryReader
 
     public function __construct(string $data)
     {
-        $this->data = $data;
+        $this->data      = $data;
         $this->totalBits = strlen($data) * 8;
     }
 
@@ -63,7 +65,8 @@ class BinaryReader
         return $this->bits(16);
     }
 
-    public function uint32(): int {
+    public function uint32(): int
+    {
         return $this->bits(32);
     }
 
@@ -80,7 +83,7 @@ class BinaryReader
             throw new OutOfBoundsException("Read of $n bytes past end of buffer");
         }
 
-        $result        = substr($this->data, $this->bitPos >> 3, $n);
+        $result = substr($this->data, $this->bitPos >> 3, $n);
         $this->bitPos += $n * 8;
 
         return $result;

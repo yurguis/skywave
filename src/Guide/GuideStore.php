@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -112,7 +114,7 @@ class GuideStore
         }
 
         $channels = array_map([self::class, 'castChannel'], $statement->fetchAll());
-        usort($channels, fn(array $a, array $b) => [$a['device'], self::virtualKey($a['virtual'])] <=> [$b['device'], self::virtualKey($b['virtual'])]);
+        usort($channels, fn (array $a, array $b) => [$a['device'], self::virtualKey($a['virtual'])] <=> [$b['device'], self::virtualKey($b['virtual'])]);
 
         return $channels;
     }
@@ -170,7 +172,7 @@ class GuideStore
                 $channelId = (int) $find->fetchColumn();
                 $counts['channels']++;
 
-                $events = array_map(fn(array $event) => ['start' => strtotime((string) $event['start'])] + $event, $vct['events'] ?? []);
+                $events = array_map(fn (array $event) => ['start' => strtotime((string) $event['start'])] + $event, $vct['events'] ?? []);
 
                 if ($events === []) {
                     continue;
@@ -179,7 +181,7 @@ class GuideStore
                 $clearWindow->execute([
                     $channelId,
                     min(array_column($events, 'start')),
-                    max(array_map(fn(array $event) => $event['start'] + (int) $event['durationSeconds'], $events)),
+                    max(array_map(fn (array $event) => $event['start'] + (int) $event['durationSeconds'], $events)),
                 ]);
 
                 foreach ($events as $event) {
@@ -219,7 +221,7 @@ class GuideStore
 
         foreach ($this->getLineup($device) as $channel) {
             $events->execute([$channel['id'], $to, $from]);
-            $channel['events'] = array_map(fn(array $event) => [
+            $channel['events'] = array_map(fn (array $event) => [
                 'eventId'     => (int) $event['event_id'],
                 'start'       => (int) $event['start'],
                 'duration'    => (int) $event['duration'],
@@ -360,7 +362,7 @@ class GuideStore
         );
         $statement->execute($params);
 
-        return array_map(fn(array $run) => [
+        return array_map(fn (array $run) => [
             'id'         => (int) $run['id'],
             'device'     => $run['device'],
             'kind'       => $run['kind'],

@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -14,7 +16,6 @@
  * Live playback needs ffmpeg on the PATH; see LiveStreams for its settings.
  */
 
-use Symfony\Component\HttpFoundation\Request;
 use Skywave\Dvr\Recorder;
 use Skywave\Dvr\RecordingPlayback;
 use Skywave\Dvr\RecordingStore;
@@ -25,6 +26,7 @@ use Skywave\Guide\GuideStore;
 use Skywave\Hdhomerun\Discovery;
 use Skywave\Web\Api;
 use Skywave\Web\LiveStreams;
+use Symfony\Component\HttpFoundation\Request;
 
 // Notices (e.g. deprecations from dependencies on newer PHP) belong in the server log,
 // never inside a JSON response. The built-in server ignores display_errors=stderr.
@@ -199,7 +201,7 @@ function sendFile(string $file, string $type): void
 // app.js from its cache after an upgrade.
 $html = (string) preg_replace_callback(
     '/\b(href|src)="((?:app|vendor\/hls\/hls\.min)\.(?:js|css))"/',
-    fn(array $match) => sprintf('%s="%s?v=%s"', $match[1], $match[2], substr((string) @md5_file(__DIR__ . '/' . $match[2]), 0, 8)),
+    fn (array $match) => sprintf('%s="%s?v=%s"', $match[1], $match[2], substr((string) @md5_file(__DIR__ . '/' . $match[2]), 0, 8)),
     (string) file_get_contents(__DIR__ . '/index.html')
 );
 

@@ -3,3 +3,5 @@
 /skywave.iml
 /.env
 /data/
+/.phpunit.cache/
+/.php-cs-fixer.cache

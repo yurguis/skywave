@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -22,7 +24,7 @@ class SyncFrameSampler
     /** Cap the rolling buffer so a payload with no sync word can't grow unbounded. */
     private const MAX_BUFFER_BYTES = 4096;
 
-    private string $buffer = '';
+    private string $buffer    = '';
     private ?SyncFrame $frame = null;
 
     public function feed(string $payload, bool $payloadUnitStart): void

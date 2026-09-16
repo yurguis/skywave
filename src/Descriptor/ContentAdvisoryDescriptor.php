@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -69,7 +71,7 @@ class ContentAdvisoryDescriptor
             for ($j = 0; $j < $dimensionsRaw; $j++) {
                 $dim = $reader->uint8();
                 $reader->skipBits(4); // reserved
-                $val = $reader->bits(4);
+                $val              = $reader->bits(4);
                 $dimensions[$dim] = $val;
             }
 
@@ -133,11 +135,21 @@ class ContentAdvisoryDescriptor
         }
 
         $sub = [];
-        if (!empty($dims[1])) $sub[] = 'D';
-        if (!empty($dims[2])) $sub[] = 'L';
-        if (!empty($dims[3])) $sub[] = 'S';
-        if (!empty($dims[4])) $sub[] = 'V';
-        if (!empty($dims[6])) $sub[] = 'FV';
+        if (!empty($dims[1])) {
+            $sub[] = 'D';
+        }
+        if (!empty($dims[2])) {
+            $sub[] = 'L';
+        }
+        if (!empty($dims[3])) {
+            $sub[] = 'S';
+        }
+        if (!empty($dims[4])) {
+            $sub[] = 'V';
+        }
+        if (!empty($dims[6])) {
+            $sub[] = 'FV';
+        }
 
         return $sub === [] ? $base : $base . ' ' . implode(',', $sub);
     }

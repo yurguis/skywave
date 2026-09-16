@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -28,11 +30,13 @@ class StreamInfo
         foreach (preg_split('/\r?\n/', $raw) as $line) {
             if (preg_match('/^tsid=0x([0-9a-f]+)/i', $line, $match)) {
                 $this->transportStreamId = (int) hexdec($match[1]);
+
                 continue;
             }
 
             if (preg_match('/^onid=0x([0-9a-f]+)/i', $line, $match)) {
                 $this->originalNetworkId = (int) hexdec($match[1]);
+
                 continue;
             }
 

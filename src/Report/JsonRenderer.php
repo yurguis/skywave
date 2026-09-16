@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -33,7 +35,7 @@ class JsonRenderer
         $pat = $parser->getProgramAssociationTable();
 
         return [
-            'systemTime'        => $stt === null ? null : [
+            'systemTime' => $stt === null ? null : [
                 'utc'            => $stt->getUtcDateTime()->format(DATE_ATOM),
                 'gpsUtcOffset'   => $stt->getGpsUtcOffset(),
                 'daylightSaving' => $stt->isDaylightSavings(),
@@ -68,7 +70,7 @@ class JsonRenderer
                 'pmtPid'   => $pmtPid,
                 'captured' => $pmt !== null,
                 'pcrPid'   => $pmt === null ? null : $pmt->getPcrPid(),
-                'streams'  => $pmt === null ? [] : array_map(fn(Stream $stream) => $this->renderStream($stream, $parser), $pmt->getStreams()),
+                'streams'  => $pmt === null ? [] : array_map(fn (Stream $stream) => $this->renderStream($stream, $parser), $pmt->getStreams()),
             ];
         }
 
@@ -87,12 +89,15 @@ class JsonRenderer
         switch ($stream->getType()) {
             case Stream::TYPE_AC3:
                 $bitstream = $parser->getAc3SyncFrame($stream->getPid());
+
                 break;
             case Stream::TYPE_MPEG2_VIDEO:
                 $bitstream = $parser->getMpeg2SequenceHeader($stream->getPid());
+
                 break;
             case Stream::TYPE_AVC_VIDEO:
                 $bitstream = $parser->getAvcSps($stream->getPid());
+
                 break;
             default:
                 $bitstream = null;
@@ -120,7 +125,7 @@ class JsonRenderer
             return [];
         }
 
-        return array_map(fn(TableEntry $entry) => [
+        return array_map(fn (TableEntry $entry) => [
             'type'    => TableEntry::tableTypeName($entry->getTableType()),
             'pid'     => $entry->getPid(),
             'version' => $entry->getVersionNumber(),
@@ -169,14 +174,14 @@ class JsonRenderer
             'hidden'        => $channel->isHidden(),
             'hideGuide'     => $channel->isHideGuide(),
             'pcrPid'        => $location instanceof ServiceLocationDescriptor ? $location->getPcrPid() : null,
-            'streams'       => $location instanceof ServiceLocationDescriptor ? array_map(fn(Stream $stream) => [
+            'streams'       => $location instanceof ServiceLocationDescriptor ? array_map(fn (Stream $stream) => [
                 'pid'      => $stream->getPid(),
                 'typeName' => $stream->getTypeName(),
                 'language' => self::language($stream),
             ], array_values($location->getStreams())) : [],
-            'description'   => $parser->getChannelDescription($sourceId),
-            'events'        => array_map(
-                fn(Event $event) => $this->renderEvent($event, $parser->getEventDescription($sourceId, $event->getEventId()), $gpsUtcOffset),
+            'description' => $parser->getChannelDescription($sourceId),
+            'events'      => array_map(
+                fn (Event $event) => $this->renderEvent($event, $parser->getEventDescription($sourceId, $event->getEventId()), $gpsUtcOffset),
                 array_values($parser->getEventsForSource($sourceId))
             ),
         ];

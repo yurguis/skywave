@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -217,6 +219,6 @@ class TunerReservations
     {
         $now = time();
 
-        return array_filter($entries, fn(array $entry) => $entry['expiresAt'] > $now);
+        return array_filter($entries, fn (array $entry) => $entry['expiresAt'] > $now);
     }
 }

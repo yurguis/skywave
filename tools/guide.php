@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -49,7 +51,7 @@ foreach (array_slice($argv, 1) as $argument) {
     }
 }
 
-$log       = static function (string $line): void {
+$log = static function (string $line): void {
     fwrite(STDOUT, date('Y-m-d H:i:s') . " $line\n");
 };
 $store        = GuideStore::fromEnvironment();
@@ -72,7 +74,7 @@ switch ($positional[0] ?? '') {
             $device = Device::at($host);
             $map    = $options['map'] ?? preferredChannelMap($device);
 
-            $collector->skipTunersUnless(fn(int $index): bool => !$reservations->isReserved($host, $index));
+            $collector->skipTunersUnless(fn (int $index): bool => !$reservations->isReserved($host, $index));
 
             $command === 'scan' ? $collector->scan($device, $map) : $collector->collect($device, $map);
         });
@@ -104,7 +106,7 @@ switch ($positional[0] ?? '') {
                     $lastScan = $store->getRecentRuns(1, $host, 'scan')[0] ?? null;
 
                     // A tuner holding a recording is off limits, however idle it looks.
-                    $collector->skipTunersUnless(fn(int $index): bool => !$reservations->isReserved($host, $index));
+                    $collector->skipTunersUnless(fn (int $index): bool => !$reservations->isReserved($host, $index));
 
                     if ($store->getLineup($host) === [] || $lastScan === null || $lastScan['startedAt'] < time() - $scanDays * 86400) {
                         $collector->scan($device, $map);
@@ -131,6 +133,7 @@ switch ($positional[0] ?? '') {
             sleep($wait * 60);
         }
 
+        // no break
     case 'logos':
         if (!isset($positional[1])) {
             fwrite(STDERR, USAGE);
@@ -228,7 +231,7 @@ function preferredChannelMap(Device $device): string
  */
 function knownHosts(GuideStore $store): array
 {
-    $hosts = array_map(fn($device) => $device->getIp(), (new Discovery())->findDevices());
+    $hosts = array_map(fn ($device) => $device->getIp(), (new Discovery())->findDevices());
     $hosts = array_merge($hosts, array_column($store->getLineup(), 'device'));
 
     foreach (explode(',', (string) getenv('HDHOMERUN_DEVICES')) as $host) {

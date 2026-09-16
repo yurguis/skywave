@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -62,6 +64,7 @@ switch ($positional[0] ?? '') {
             sleep($tick);
         }
 
+        // no break
     case 'list':
         listRecordings($store);
         exit(0);

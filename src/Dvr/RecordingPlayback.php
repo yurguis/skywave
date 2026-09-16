@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -383,17 +385,17 @@ class RecordingPlayback
             'recordingId' => $recording['id'],
             'title'       => $recording['title'],
             // The channel number on its own, so the player can show that channel's logo.
-            'virtual'     => $recording['virtual'],
-            'subtitle'    => trim("{$recording['virtual']} {$recording['channelName']}"),
-            'playlist'    => "/recordings/{$recording['id']}/hls/index.m3u8",
-            'converting'  => $running,
+            'virtual'    => $recording['virtual'],
+            'subtitle'   => trim("{$recording['virtual']} {$recording['channelName']}"),
+            'playlist'   => "/recordings/{$recording['id']}/hls/index.m3u8",
+            'converting' => $running,
             // Two segments in, there is enough to start without stalling straight away.
-            'ready'       => $segments >= 2,
-            'segments'    => $segments,
-            'viewers'     => count($session['viewers']),
+            'ready'    => $segments >= 2,
+            'segments' => $segments,
+            'viewers'  => count($session['viewers']),
             // What each track was before it was converted, so the player can name them.
-            'audio'       => $this->audioTracks(rtrim(dirname($this->directory), '/') . '/' . $recording['path']),
-            'error'       => $running || $segments > 0 ? null : (DetachedProcess::lastLogLine("$directory/ffmpeg.log") ?? 'The converter stopped'),
+            'audio' => $this->audioTracks(rtrim(dirname($this->directory), '/') . '/' . $recording['path']),
+            'error' => $running || $segments > 0 ? null : (DetachedProcess::lastLogLine("$directory/ffmpeg.log") ?? 'The converter stopped'),
         ];
     }
 
@@ -434,7 +436,7 @@ class RecordingPlayback
                 continue;
             }
 
-            $watching = array_filter($session['viewers'], fn(int $seen) => $now - $seen <= $this->viewerTimeout);
+            $watching = array_filter($session['viewers'], fn (int $seen) => $now - $seen <= $this->viewerTimeout);
 
             if ($watching === []) {
                 $this->terminate($session);

@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -92,6 +94,7 @@ class ChannelLogos
 
             if (!$force && is_file($path)) {
                 $totals['skipped']++;
+
                 continue;
             }
 
@@ -99,6 +102,7 @@ class ChannelLogos
 
             if ($image === null) {
                 $totals['failed']++;
+
                 continue;
             }
 
@@ -172,10 +176,10 @@ class ChannelLogos
     {
         return stream_context_create([
             'http' => [
-                'timeout'       => $this->timeout,
+                'timeout'         => $this->timeout,
                 'follow_location' => 1,
-                'max_redirects' => 3,
-                'header'        => "User-Agent: skywave\r\n",
+                'max_redirects'   => 3,
+                'header'          => "User-Agent: skywave\r\n",
             ],
         ]);
     }

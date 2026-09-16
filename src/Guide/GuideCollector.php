@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -6,13 +8,13 @@
 namespace Skywave\Guide;
 
 use RuntimeException;
-use Throwable;
 use Skywave\Hdhomerun\Device;
 use Skywave\Hdhomerun\Exception\HdhomerunException;
 use Skywave\Hdhomerun\Exception\StreamException;
 use Skywave\Hdhomerun\StreamAnalyzer;
 use Skywave\Hdhomerun\Tuner;
 use Skywave\Report\JsonRenderer;
+use Throwable;
 
 /**
  * Fills the guide store from a device: a channel scan for the lineup, then the ATSC
@@ -46,7 +48,7 @@ class GuideCollector
         };
         $this->scanner          = $scanner ?? new ChannelScanner();
         $this->analyzer         = $analyzer ?? new StreamAnalyzer();
-        $this->isTunerAvailable = static fn(int $index): bool => true;
+        $this->isTunerAvailable = static fn (int $index): bool => true;
     }
 
     /**
@@ -80,7 +82,7 @@ class GuideCollector
 
             $channels = $this->scanner->scan($tuner, $channelMap, function (int $physical, array $programs): void {
                 if ($programs !== []) {
-                    $names = array_map(fn(array $program) => "{$program['virtual']} {$program['name']}", $programs);
+                    $names = array_map(fn (array $program) => "{$program['virtual']} {$program['name']}", $programs);
                     ($this->log)(sprintf('  channel %d: %s', $physical, implode(', ', $names)));
                 }
             });
@@ -129,6 +131,7 @@ class GuideCollector
                 if ($tuner === null) {
                     $errors[] = "channel $physical: every tuner is in use";
                     ($this->log)(end($errors));
+
                     continue;
                 }
 
@@ -141,6 +144,7 @@ class GuideCollector
                     // ordinary for a weak one. The page wants the fact, the log wants the detail.
                     $errors[] = "channel $physical could not be read";
                     ($this->log)("channel $physical: {$e->getMessage()}");
+
                     continue;
                 }
 
@@ -148,7 +152,7 @@ class GuideCollector
                 $counts = $this->store->saveChannelGuide($host, $physical, $report['transportStreamId'], $report['channels']);
 
                 $totals['channels'] += $counts['channels'];
-                $totals['events']   += $counts['events'];
+                $totals['events'] += $counts['events'];
 
                 ($this->log)(sprintf(
                     '  channel %d on tuner %d: %d channels, %d events in %.1fs%s',
@@ -189,7 +193,7 @@ class GuideCollector
     {
         $hd = self::hdByVirtual($device);
 
-        return array_map(fn(array $channel) => $channel + ['hd' => $hd[$channel['virtual']] ?? false], $channels);
+        return array_map(fn (array $channel) => $channel + ['hd' => $hd[$channel['virtual']] ?? false], $channels);
     }
 
     /**

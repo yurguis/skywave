@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -90,8 +92,8 @@ $controlClients = [];
 $httpClients = [];
 
 while (true) {
-    $read  = [$udp, $tcp, $http];
-    $write = [];
+    $read      = [$udp, $tcp, $http];
+    $write     = [];
     $streaming = false;
 
     foreach ($controlClients as $client) {
@@ -147,6 +149,7 @@ while (true) {
 
             if ($chunk === false || ($chunk === '' && feof($socket))) {
                 closeHttpClient($device, $httpClients, $id, $verbose);
+
                 continue;
             }
 
@@ -173,6 +176,7 @@ while (true) {
 
         if ($written === false) {
             closeHttpClient($device, $httpClients, $id, $verbose);
+
             continue;
         }
 
@@ -185,11 +189,13 @@ while (true) {
         if ($client['state'] === 'closing' && $client['pending'] === '') {
             unset($client);
             closeHttpClient($device, $httpClients, $id, $verbose);
+
             continue;
         }
 
         if ($client['state'] !== 'streaming') {
             unset($client);
+
             continue;
         }
 
@@ -198,6 +204,7 @@ while (true) {
         if ($client['duration'] !== null && $elapsed >= $client['duration']) {
             unset($client);
             closeHttpClient($device, $httpClients, $id, $verbose);
+
             continue;
         }
 
@@ -207,9 +214,9 @@ while (true) {
         $due = (int) (($elapsed + 0.5) * $capture->getByteRate()) - $client['sent'];
 
         if ($client['pending'] === '' && $due >= 188 * 64) {
-            $bytes              = min(intdiv($due, 188), 1024) * 188;
-            $client['pending']  = $capture->read($client['handle'], $bytes);
-            $client['sent']    += $bytes;
+            $bytes             = min(intdiv($due, 188), 1024) * 188;
+            $client['pending'] = $capture->read($client['handle'], $bytes);
+            $client['sent'] += $bytes;
         }
 
         unset($client);
@@ -483,6 +490,7 @@ class CaptureSource
 
             if ($chunk === false || $chunk === '') {
                 rewind($handle);
+
                 continue;
             }
 
@@ -554,9 +562,9 @@ class FakeDevice
 {
     public const HTTP_PORT = 5004;
 
-    private const MODEL      = 'hdhomerun5_atsc';
-    private const VERSION    = '20250506';
-    private const FEATURES   = "channelmap: us-bcast us-cable us-hrc us-irc\nmodulation: 8vsb qam256 qam64\nauto-modulation: auto auto6t auto6c qam\n";
+    private const MODEL                  = 'hdhomerun5_atsc';
+    private const VERSION                = '20250506';
+    private const FEATURES               = "channelmap: us-bcast us-cable us-hrc us-irc\nmodulation: 8vsb qam256 qam64\nauto-modulation: auto auto6t auto6c qam\n";
     private const NO_SIGNAL_FROM_CHANNEL = 52;
 
     private int $deviceId;
@@ -664,7 +672,7 @@ class FakeDevice
             $result = $value === null ? $this->get($name) : $this->set($name, $value, $lockkey, $peerIp);
             $reply  = Packet::encodeTlv(Packet::TAG_GETSET_NAME, "$name\0") . Packet::encodeTlv(Packet::TAG_GETSET_VALUE, "$result\0");
         } catch (DomainException $e) {
-            $reply    = Packet::encodeTlv(Packet::TAG_GETSET_NAME, "$name\0") . Packet::encodeTlv(Packet::TAG_ERROR_MESSAGE, "ERROR: {$e->getMessage()}\0");
+            $reply = Packet::encodeTlv(Packet::TAG_GETSET_NAME, "$name\0") . Packet::encodeTlv(Packet::TAG_ERROR_MESSAGE, "ERROR: {$e->getMessage()}\0");
             $summary .= " -> ERROR: {$e->getMessage()}";
         }
 
@@ -704,6 +712,7 @@ class FakeDevice
             foreach ($this->tuners as $candidate => $tuner) {
                 if ($tuner['channel'] === 'none' && $tuner['lockkey'] === 0 && !$tuner['streaming']) {
                     $index = $candidate;
+
                     break;
                 }
             }
@@ -826,24 +835,28 @@ class FakeDevice
                     throw new DomainException('invalid channel');
                 }
                 $tuner['program'] = '0';
+
                 break;
 
             case 'channelmap':
                 if (!in_array($value, ['us-bcast', 'us-cable', 'us-hrc', 'us-irc'], true)) {
                     throw new DomainException('invalid channelmap');
                 }
+
                 break;
 
             case 'program':
                 if (!ctype_digit($value)) {
                     throw new DomainException('invalid program');
                 }
+
                 break;
 
             case 'target':
                 if ($value !== 'none' && !preg_match('#^(rtp|udp)://\d{1,3}(\.\d{1,3}){3}:\d{1,5}$#', $value)) {
                     throw new DomainException('invalid target');
                 }
+
                 break;
         }
 
@@ -957,7 +970,7 @@ class FakeDevice
         $checksum = 0;
 
         for ($shift = 28; $shift >= 4; $shift -= 4) {
-            $nibble    = ($id >> $shift) & 0x0F;
+            $nibble = ($id >> $shift) & 0x0F;
             $checksum ^= (($shift / 4) % 2 === 1) ? $lookup[$nibble] : $nibble;
         }
 

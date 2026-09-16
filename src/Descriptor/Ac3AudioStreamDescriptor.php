@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -107,7 +109,7 @@ class Ac3AudioStreamDescriptor
             return;
         }
 
-        $reader = new BinaryReader($data);
+        $reader               = new BinaryReader($data);
         $this->sampleRateCode = $reader->bits(3);
         $this->bsid           = $reader->bits(5);
         $this->bitRateCode    = $reader->bits(6);

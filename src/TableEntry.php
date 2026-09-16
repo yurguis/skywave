@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -31,12 +33,27 @@ class TableEntry
         $this->parseDescriptors($descriptors);
     }
 
-    public function getTableType(): int     { return $this->tableType; }
-    public function getPid(): int           { return $this->pid; }
-    public function getVersionNumber(): int { return $this->versionNumber; }
-    public function getNumberBytes(): int   { return $this->numberBytes; }
+    public function getTableType(): int
+    {
+        return $this->tableType;
+    }
+    public function getPid(): int
+    {
+        return $this->pid;
+    }
+    public function getVersionNumber(): int
+    {
+        return $this->versionNumber;
+    }
+    public function getNumberBytes(): int
+    {
+        return $this->numberBytes;
+    }
     /** @return object[] */
-    public function getDescriptors(): array { return $this->descriptors; }
+    public function getDescriptors(): array
+    {
+        return $this->descriptors;
+    }
 
     public static function tableTypeName(int $type): string
     {

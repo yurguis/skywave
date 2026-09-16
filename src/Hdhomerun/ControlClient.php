@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -158,12 +160,14 @@ class ControlClient
             } catch (HdhomerunException $e) {
                 $this->close();
                 $lastError = $e;
+
                 continue;
             }
 
             if ($reply['type'] !== $type + 1) {
                 $this->close();
                 $lastError = new ProtocolException(sprintf('Unexpected reply frame type 0x%04X', $reply['type']));
+
                 continue;
             }
 

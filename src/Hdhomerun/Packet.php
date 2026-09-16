@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -27,20 +29,20 @@ class Packet
     public const TYPE_GETSET_REQ   = 0x0004;
     public const TYPE_GETSET_RPY   = 0x0005;
 
-    public const TAG_DEVICE_TYPE                 = 0x01;
-    public const TAG_DEVICE_ID                   = 0x02;
-    public const TAG_GETSET_NAME                 = 0x03;
-    public const TAG_GETSET_VALUE                = 0x04;
-    public const TAG_ERROR_MESSAGE               = 0x05;
-    public const TAG_TUNER_COUNT                 = 0x10;
-    public const TAG_GETSET_LOCKKEY              = 0x15;
-    public const TAG_LINEUP_URL                  = 0x27;
-    public const TAG_STORAGE_URL                 = 0x28;
-    public const TAG_DEVICE_AUTH_BIN_DEPRECATED  = 0x29;
-    public const TAG_BASE_URL                    = 0x2A;
-    public const TAG_DEVICE_AUTH_STR             = 0x2B;
-    public const TAG_STORAGE_ID                  = 0x2C;
-    public const TAG_MULTI_TYPE                  = 0x2D;
+    public const TAG_DEVICE_TYPE                = 0x01;
+    public const TAG_DEVICE_ID                  = 0x02;
+    public const TAG_GETSET_NAME                = 0x03;
+    public const TAG_GETSET_VALUE               = 0x04;
+    public const TAG_ERROR_MESSAGE              = 0x05;
+    public const TAG_TUNER_COUNT                = 0x10;
+    public const TAG_GETSET_LOCKKEY             = 0x15;
+    public const TAG_LINEUP_URL                 = 0x27;
+    public const TAG_STORAGE_URL                = 0x28;
+    public const TAG_DEVICE_AUTH_BIN_DEPRECATED = 0x29;
+    public const TAG_BASE_URL                   = 0x2A;
+    public const TAG_DEVICE_AUTH_STR            = 0x2B;
+    public const TAG_STORAGE_ID                 = 0x2C;
+    public const TAG_MULTI_TYPE                 = 0x2D;
 
     public const DEVICE_TYPE_TUNER    = 0x00000001;
     public const DEVICE_TYPE_STORAGE  = 0x00000005;
@@ -141,7 +143,7 @@ class Packet
             }
 
             $tlvs[] = [$tag, substr($payload, $pos, $length)];
-            $pos   += $length;
+            $pos += $length;
         }
 
         return $tlvs;

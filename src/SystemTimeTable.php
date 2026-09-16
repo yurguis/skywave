@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -22,11 +24,11 @@ class SystemTimeTable extends SectionTable
     /** Unix timestamp of 1980-01-06 00:00:00 UTC, the GPS epoch. */
     public const GPS_EPOCH_UNIX = 315964800;
 
-    private int $systemTime    = 0;
-    private int $gpsUtcOffset  = 0;
-    private bool $dsStatus     = false;
-    private int $dsDayOfMonth  = 0;
-    private int $dsHour        = 0;
+    private int $systemTime   = 0;
+    private int $gpsUtcOffset = 0;
+    private bool $dsStatus    = false;
+    private int $dsDayOfMonth = 0;
+    private int $dsHour       = 0;
 
     public function parse(): void
     {

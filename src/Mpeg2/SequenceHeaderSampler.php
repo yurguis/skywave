@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -15,7 +17,7 @@ class SequenceHeaderSampler
     /** Sequence header + extension fit in well under 1 KB; cap the rolling buffer to bound memory. */
     private const MAX_BUFFER_BYTES = 16384;
 
-    private string $buffer = '';
+    private string $buffer          = '';
     private ?SequenceHeader $header = null;
 
     public function feed(string $payload, bool $payloadUnitStart): void

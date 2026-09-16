@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -533,22 +535,22 @@ class RecordingStore
     private static function castRecording(array $row): array
     {
         return [
-            'id'          => (int) $row['id'],
-            'scheduleId'  => $row['schedule_id'] === null ? null : (int) $row['schedule_id'],
-            'device'      => $row['device'],
-            'physical'    => (int) $row['physical'],
-            'program'     => (int) $row['program'],
-            'virtual'     => $row['virtual'],
-            'channelName' => $row['channel_name'],
-            'title'       => $row['title'],
-            'description' => $row['description'],
-            'path'        => $row['path'],
-            'format'      => $row['format'],
-            'tuner'       => $row['tuner'] === null ? null : (int) $row['tuner'],
-            'pid'         => $row['pid'] === null ? null : (int) $row['pid'],
-            'startedAt'   => (int) $row['started_at'],
-            'stopsAt'     => (int) $row['stops_at'],
-            'endedAt'     => $row['ended_at'] === null ? null : (int) $row['ended_at'],
+            'id'             => (int) $row['id'],
+            'scheduleId'     => $row['schedule_id'] === null ? null : (int) $row['schedule_id'],
+            'device'         => $row['device'],
+            'physical'       => (int) $row['physical'],
+            'program'        => (int) $row['program'],
+            'virtual'        => $row['virtual'],
+            'channelName'    => $row['channel_name'],
+            'title'          => $row['title'],
+            'description'    => $row['description'],
+            'path'           => $row['path'],
+            'format'         => $row['format'],
+            'tuner'          => $row['tuner'] === null ? null : (int) $row['tuner'],
+            'pid'            => $row['pid'] === null ? null : (int) $row['pid'],
+            'startedAt'      => (int) $row['started_at'],
+            'stopsAt'        => (int) $row['stops_at'],
+            'endedAt'        => $row['ended_at'] === null ? null : (int) $row['ended_at'],
             'bytes'          => (int) $row['bytes'],
             'status'         => $row['status'],
             'error'          => $row['error'],

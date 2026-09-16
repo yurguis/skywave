@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -45,8 +47,8 @@ class EventInformationTable extends SectionTable
 
         for ($i = 0; $i < $numEvents; $i++) {
             $reader->skipBits(2); // reserved
-            $eventId       = $reader->bits(14);
-            $startTime     = $reader->uint32();
+            $eventId   = $reader->bits(14);
+            $startTime = $reader->uint32();
             $reader->skipBits(2); // reserved
             $reader->skipBits(2); // ETM_location
             $lengthSeconds = $reader->bits(20);

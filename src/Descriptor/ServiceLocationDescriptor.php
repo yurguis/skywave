@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * @author Yurguis Garcia <yurguis@gmail.com>
  */
@@ -29,7 +31,7 @@ class ServiceLocationDescriptor
         for ($i = 0; $i < $numberElements; $i++) {
             $streamType = $reader->uint8();
             $reader->skipBits(3); // reserved
-            $pid = $reader->bits(13);
+            $pid      = $reader->bits(13);
             $language = $reader->bytes(3);
 
             $this->streams[] = new Stream($streamType, $pid, $language);
