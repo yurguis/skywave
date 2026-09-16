@@ -51,8 +51,17 @@ foreach (array_slice($argv, 1) as $argument) {
     }
 }
 
-$log = static function (string $line): void {
-    fwrite(STDOUT, date('Y-m-d H:i:s') . " $line\n");
+// --log keeps a copy where the page can read it: a service's own output lives in the
+// container's stdout, which the browser has no way to reach.
+$logFile = $options['log'] ?? null;
+
+$log = static function (string $line) use ($logFile): void {
+    $entry = date('Y-m-d H:i:s') . " $line\n";
+    fwrite(STDOUT, $entry);
+
+    if ($logFile !== null) {
+        @file_put_contents($logFile, $entry, FILE_APPEND | LOCK_EX);
+    }
 };
 $store        = GuideStore::fromEnvironment();
 $jobs         = GuideJobs::fromEnvironment();

@@ -3,6 +3,7 @@
 const POLL_INTERVAL_MS = 2000;
 const HOSTS_STORAGE_KEY = 'hdhomerun.manualHosts';
 const TAB_STORAGE_KEY = 'hdhomerun.tab';
+const LOG_SOURCE_STORAGE_KEY = 'skywave.log';
 const CAPTIONS_STORAGE_KEY = 'hdhomerun.captions';
 const CAPTION_TRACK_STORAGE_KEY = 'hdhomerun.captionTrack';
 const AUDIO_STORAGE_KEY = 'hdhomerun.audio';
@@ -34,7 +35,7 @@ const state = {
   recordingsView: null,
 };
 
-const TAB_LABELS = { tuners: 'Tuners', guide: 'Guide', recordings: 'Recordings' };
+const TAB_LABELS = { tuners: 'Tuners', guide: 'Guide', recordings: 'Recordings', logs: 'Logs' };
 const FORMAT_LABELS = { ts: 'Original', mp4: 'Browser-ready', both: 'Both' };
 /** Roughly ten hours of recording; below this the Recordings tab says so. */
 const LOW_SPACE_BYTES = 20e9;
@@ -292,11 +293,13 @@ function selectDevice(host) {
 
   state.recordingsView?.destroy();
   state.recordingsView = createRecordingsView(device, state.player);
+  state.logsView = createLogsView();
 
   const views = {
     tuners: h('div', { class: 'view' }, h('div', { class: 'tuners' }, state.tunerCards.map((card) => card.root)), analysisPanel),
     guide: state.guideView.root,
     recordings: state.recordingsView.root,
+    logs: state.logsView.root,
   };
   const tabButtons = Object.keys(views).map((name) => h('button', {
     type: 'button',
@@ -327,6 +330,7 @@ function selectDevice(host) {
     saveSetting(TAB_STORAGE_KEY, name);
     if (name === 'guide') state.guideView.load();
     if (name === 'recordings') state.recordingsView.load();
+    if (name === 'logs') state.logsView.load();
   }
 
   document.getElementById('device-detail').replaceChildren(
@@ -2250,6 +2254,109 @@ function createRecordingsView(device, player) {
       clearTimeout(timer);
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Logs
+
+/**
+ * What the services wrote down. Only logs the server offers can be asked for, by id, so
+ * the page never names a path.
+ */
+function createLogsView() {
+  let sources = [];
+  let chosen = loadSetting(LOG_SOURCE_STORAGE_KEY);
+  let timer = null;
+  let loading = false;
+
+  const picker = h('select', { class: 'log-source', 'aria-label': 'Which log', onchange: () => {
+    chosen = picker.value;
+    saveSetting(LOG_SOURCE_STORAGE_KEY, chosen);
+    load();
+  } });
+
+  const follow = h('input', { type: 'checkbox', checked: true, onchange: () => { if (follow.checked) toBottom(); } });
+  const detail = h('span', { class: 'muted log-detail' });
+  const pane = h('pre', { class: 'log-pane', tabindex: '0' });
+
+  const root = h('div', { class: 'view logs', hidden: true },
+    h('div', { class: 'log-toolbar' },
+      picker,
+      h('button', { type: 'button', class: 'secondary', onclick: () => load() }, 'Refresh'),
+      h('label', { class: 'log-follow' }, follow, 'Follow'),
+      detail,
+    ),
+    h('div', { class: 'card log-card' }, pane),
+  );
+
+  function toBottom() {
+    pane.scrollTop = pane.scrollHeight;
+  }
+
+  async function load() {
+    if (loading) return;
+    loading = true;
+
+    try {
+      const listing = await api('/api/logs');
+      sources = listing.logs ?? [];
+
+      if (sources.length === 0) {
+        picker.replaceChildren();
+        pane.textContent = 'Nothing has written a log yet.';
+        detail.textContent = '';
+
+        return;
+      }
+
+      // Rebuilding the list would lose the open dropdown, so only do it when it changed.
+      const wanted = sources.map((source) => `${source.id}:${source.name}`).join('|');
+
+      if (picker.dataset.signature !== wanted) {
+        picker.dataset.signature = wanted;
+        picker.replaceChildren(...groups(sources).map(([group, rows]) =>
+          h('optgroup', { label: group }, rows.map((source) =>
+            h('option', { value: source.id }, source.name)))));
+      }
+
+      if (!sources.some((source) => source.id === chosen)) chosen = sources[0].id;
+      picker.value = chosen;
+
+      const log = await api(`/api/logs/${encodeURIComponent(chosen)}?lines=500`);
+      const atBottom = follow.checked;
+
+      pane.textContent = log.lines.length === 0 ? '(empty)' : log.lines.join('\n');
+      detail.textContent = `${formatBytes(log.bytes)} · written ${timeAgo(log.modifiedAt)}`;
+
+      if (atBottom) toBottom();
+    } catch (error) {
+      pane.textContent = error.message;
+      detail.textContent = '';
+    } finally {
+      loading = false;
+      schedule();
+    }
+  }
+
+  function groups(rows) {
+    const byGroup = new Map();
+
+    for (const row of rows) {
+      if (!byGroup.has(row.group)) byGroup.set(row.group, []);
+      byGroup.get(row.group).push(row);
+    }
+
+    return [...byGroup.entries()];
+  }
+
+  // Only while the tab is open: a log nobody is looking at is not worth fetching.
+  function schedule() {
+    clearTimeout(timer);
+    if (!root.isConnected || root.hidden) return;
+    timer = setTimeout(load, 5000);
+  }
+
+  return { root, load };
 }
 
 // ---------------------------------------------------------------------------

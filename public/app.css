@@ -481,6 +481,26 @@ button:disabled { opacity: .55; cursor: progress; }
 .controls select { min-width: 0; }
 .controls .channel-select { flex: 1 1 140px; }
 
+/* Logs */
+
+.log-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.log-source { min-width: 0; flex: 1 1 260px; }
+.log-follow { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.log-detail { font-size: 12.5px; }
+.log-card { padding: 0; overflow: hidden; }
+
+.log-pane {
+  margin: 0;
+  padding: 12px 14px;
+  max-height: 60vh;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+  color: var(--text);
+}
+
 .analysis { display: grid; gap: 16px; }
 .analysis-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 

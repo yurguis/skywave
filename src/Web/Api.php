@@ -87,6 +87,8 @@ class Api
     private ?TunerReservations $reservations;
     private ?RecordingPlayback $playback;
 
+    private ?Logs $logs;
+
     /**
      * @param string[] $configuredHosts devices to list even when broadcast discovery cannot reach them
      * @param LiveStreams|null $streams live playback, or null to disable it
@@ -106,7 +108,8 @@ class Api
         ?RecordingStore $recordings = null,
         ?Recorder $recorder = null,
         ?TunerReservations $reservations = null,
-        ?RecordingPlayback $playback = null
+        ?RecordingPlayback $playback = null,
+        ?Logs $logs = null
     ) {
         $this->discovery       = $discovery;
         $this->configuredHosts = $configuredHosts;
@@ -117,6 +120,7 @@ class Api
         $this->recorder        = $recorder;
         $this->reservations    = $reservations;
         $this->playback        = $playback;
+        $this->logs            = $logs;
     }
 
     public function handle(Request $request): JsonResponse
@@ -185,6 +189,18 @@ class Api
 
         if ($path === '/api/recordings' || str_starts_with($path, '/api/recordings/')) {
             return $this->routeRecordings($method, $path, $request);
+        }
+
+        if ($path === '/api/logs') {
+            self::requireMethod($method, 'GET');
+
+            return $this->listLogs();
+        }
+
+        if (preg_match('#^/api/logs/([A-Za-z0-9-]+)$#', $path, $match)) {
+            self::requireMethod($method, 'GET');
+
+            return $this->readLog($match[1], (int) $request->query->get('lines', '200'));
         }
 
         if (!preg_match('#^/api/devices/([^/]+)(?:/tuners/(\d+)(?:/(channel|channelmap|analysis|stream))?)?$#', $path, $match)) {
@@ -727,6 +743,36 @@ class Api
     /**
      * @return array<string, mixed>
      */
+    /**
+     * @return array<string, mixed>
+     */
+    private function listLogs(): array
+    {
+        if ($this->logs === null) {
+            throw new ApiException('Logs are not available', 503);
+        }
+
+        return ['logs' => $this->logs->sources()];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function readLog(string $id, int $lines): array
+    {
+        if ($this->logs === null) {
+            throw new ApiException('Logs are not available', 503);
+        }
+
+        $log = $this->logs->tail($id, $lines);
+
+        if ($log === null) {
+            throw new ApiException('No such log', 404);
+        }
+
+        return $log;
+    }
+
     private function routeRecordings(string $method, string $path, Request $request): array
     {
         $store = $this->recordingStore();

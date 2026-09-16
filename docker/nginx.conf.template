@@ -15,6 +15,9 @@ http {
     default_type application/octet-stream;
 
     access_log /dev/stdout;
+    # A second copy where the page can read it. Filled in by the entrypoint only when the
+    # data volume is writable: a log nginx cannot open would stop it from starting at all.
+    @ACCESS_LOG@
     sendfile on;
     server_tokens off;
     client_max_body_size 64k;

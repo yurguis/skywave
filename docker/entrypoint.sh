@@ -20,6 +20,23 @@ esac
 
 mkdir -p "$RUNTIME_DIR"
 
+# The page can only show logs it can open, so nginx keeps a copy of the access log beside
+# the guide database. Nothing rotates it; an oversized one is emptied at start rather than
+# left to grow without end. If the volume is not writable the copy is simply skipped, which
+# must not stop nginx from starting.
+LOG_DIR=/data/logs
+ACCESS_LOG=""
+
+if mkdir -p "$LOG_DIR" 2>/dev/null && [ -w "$LOG_DIR" ]; then
+    if [ -f "$LOG_DIR/access.log" ] && [ "$(wc -c < "$LOG_DIR/access.log")" -gt 16777216 ]; then
+        : > "$LOG_DIR/access.log"
+    fi
+
+    ACCESS_LOG="access_log $LOG_DIR/access.log;"
+else
+    echo "Cannot write $LOG_DIR; the page will have no web request log to show." >&2
+fi
+
 if [ -n "${AUTH_PASSWORD_FILE:-}" ]; then
     AUTH_PASSWORD="$(cat "$AUTH_PASSWORD_FILE")"
 fi
@@ -46,6 +63,7 @@ unset AUTH_PASSWORD AUTH_PASSWORD_FILE
 sed -e "s|@HTTP_PORT@|$HTTP_PORT|g" \
     -e "s|@RUNTIME_DIR@|$RUNTIME_DIR|g" \
     -e "s|@AUTH_DIRECTIVES@|$AUTH_DIRECTIVES|" \
+    -e "s|@ACCESS_LOG@|$ACCESS_LOG|" \
     /etc/hdhomerun/nginx.conf.template > "$RUNTIME_DIR/nginx.conf"
 
 php-fpm --nodaemonize &

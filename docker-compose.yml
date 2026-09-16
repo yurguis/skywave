@@ -49,7 +49,7 @@ services:
     # The image's health check probes the web UI, which this container does not run.
     healthcheck:
       disable: true
-    command: ["php", "tools/guide.php", "run", "--interval=${GUIDE_INTERVAL:-240}"]
+    command: ["php", "tools/guide.php", "run", "--interval=${GUIDE_INTERVAL:-240}", "--log=/data/logs/guide.log"]
     environment:
       HDHOMERUN_DEVICES: ${HDHOMERUN_DEVICES:-}
     volumes:
@@ -64,7 +64,7 @@ services:
     # The image's health check probes the web UI, which this container does not run.
     healthcheck:
       disable: true
-    command: ["php", "tools/recorder.php", "run", "--tick=${RECORDER_TICK:-10}"]
+    command: ["php", "tools/recorder.php", "run", "--tick=${RECORDER_TICK:-10}", "--log=/data/logs/recorder.log"]
     environment:
       RECORDINGS_DIR: /recordings
       RECORDING_HEIGHT: ${RECORDING_HEIGHT:-720}

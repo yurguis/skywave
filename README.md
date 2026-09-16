@@ -191,6 +191,25 @@ conversion runs about 20 times faster than playback, so it starts within seconds
 can seek anywhere already converted. Those segments live in a hidden `.playback` folder
 beside the recordings and are deleted a minute after the last viewer stops watching.
 
+### Logs
+
+The Logs tab shows what the services wrote down, so a failed recording or a guide scan
+that went wrong can be read without a terminal:
+
+- **Web requests** — every request nginx served, with its status and the browser that
+  asked.
+- **Recorder** and **Guide** — what those services are doing between jobs.
+- **Each recording** and **each live stream** — the transcoder's own output, which is
+  where a recording that stopped early explains itself.
+
+The page asks for a log by name from a fixed list, never by path, and each one is read
+from its end so a large file costs no more to open than a small one.
+
+Two things are worth knowing. Nothing rotates the request log, so it is emptied at startup
+if it has grown past 16 MB (roughly a fortnight at a few thousand requests a day). And in
+Docker the client address is always the gateway's, because published ports hide the real
+one: to see who is connecting, read the address your proxy reports rather than this log.
+
 ### Simulator (no hardware needed)
 
 ```bash

@@ -26,6 +26,7 @@ use Skywave\Guide\GuideStore;
 use Skywave\Hdhomerun\Discovery;
 use Skywave\Web\Api;
 use Skywave\Web\LiveStreams;
+use Skywave\Web\Logs;
 use Symfony\Component\HttpFoundation\Request;
 
 // Notices (e.g. deprecations from dependencies on newer PHP) belong in the server log,
@@ -136,7 +137,7 @@ if (str_starts_with($path, '/api/')) {
         $playback     = null;
     }
 
-    (new Api(new Discovery(), $hosts, LiveStreams::fromEnvironment(), $guide, $guideJobs, $recordings, $recorder, $reservations, $playback))
+    (new Api(new Discovery(), $hosts, LiveStreams::fromEnvironment(), $guide, $guideJobs, $recordings, $recorder, $reservations, $playback, Logs::fromEnvironment()))
         ->handle(Request::createFromGlobals())
         ->send();
 
