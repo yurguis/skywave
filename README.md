@@ -13,6 +13,28 @@ internet connection.
 
 Start it with [Docker](#docker), or run it straight from PHP.
 
+## Screenshots
+
+Watching a channel. The overlay carries the station's logo, what is on now and what is
+next, a seek bar over the rewind window, and the controls for picture size, audio track,
+captions and recording.
+
+![Skywave playing a channel, with the player controls showing](docs/player.png)
+
+The guide, read from the broadcast itself rather than from a service, with station logos
+and HD marked.
+
+![The programme guide, showing several channels and their listings](docs/guide.png)
+
+A programme's details, from where it can be watched or recorded.
+
+![A programme's details, with a button to watch or record it](docs/guide-details.png)
+
+Recordings, with one in progress. The dot on the tab pulses wherever you are in the page
+while something is being recorded.
+
+![The recordings tab, listing one recording in progress and four finished](docs/recordings.png)
+
 ## HDHomeRun
 
 A pure PHP client for HDHomeRun tuners lives in `src/Hdhomerun/`: discovery, get/set
