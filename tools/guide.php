@@ -19,6 +19,8 @@ declare(strict_types=1);
  * is GUIDE_DB (default data/guide.sqlite). Only idle tuners are used.
  */
 
+use Skywave\Dvr\RecordingStore;
+use Skywave\Dvr\SeriesRules;
 use Skywave\Dvr\TunerReservations;
 use Skywave\Guide\ChannelLogos;
 use Skywave\Guide\GuideCollector;
@@ -67,6 +69,8 @@ $store        = GuideStore::fromEnvironment();
 $jobs         = GuideJobs::fromEnvironment();
 $reservations = TunerReservations::fromEnvironment();
 $collector    = new GuideCollector($store, (int) ($options['seconds'] ?? 30), $log);
+// Standing rules are evaluated against whatever the collect has just brought into view.
+$series = new SeriesRules($store, RecordingStore::fromEnvironment());
 
 switch ($positional[0] ?? '') {
     case 'scan':
@@ -109,7 +113,7 @@ switch ($positional[0] ?? '') {
             }
 
             foreach ($hosts as $host) {
-                $failed = withDeviceLock($jobs, $host, $log, static function () use ($collector, $reservations, $store, $host, $options, $scanDays): void {
+                $failed = withDeviceLock($jobs, $host, $log, static function () use ($collector, $reservations, $store, $series, $log, $host, $options, $scanDays): void {
                     $device   = Device::at($host);
                     $map      = $options['map'] ?? preferredChannelMap($device);
                     $lastScan = $store->getRecentRuns(1, $host, 'scan')[0] ?? null;
@@ -122,6 +126,13 @@ switch ($positional[0] ?? '') {
                     }
 
                     $collector->collect($device, $map);
+
+                    // Whatever has just come into view and matches a rule is scheduled now.
+                    $rules = $series->evaluate($host);
+
+                    if ($rules['scheduled'] > 0) {
+                        $log("Series rules scheduled {$rules['scheduled']} showing(s) on $host");
+                    }
                 }) !== 0 || $failed;
             }
 

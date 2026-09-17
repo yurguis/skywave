@@ -409,6 +409,121 @@ class RecordingStore
         return $statement->rowCount() > 0;
     }
 
+    /**
+     * Record every showing of a title on one channel. Asking twice returns the same rule.
+     *
+     * @param array<string, mixed> $rule device, physical, program, virtual, channelName,
+     *                                   title and optionally earliest, latest, days,
+     *                                   timezone, format, padStart, padEnd
+     */
+    public function addRule(array $rule): int
+    {
+        $existing = $this->findRule((string) $rule['device'], (int) $rule['physical'], (int) $rule['program'], (string) $rule['title']);
+
+        if ($existing !== null) {
+            return $existing['id'];
+        }
+
+        $now       = time();
+        $statement = $this->db->prepare(
+            'INSERT INTO rules (
+                device, physical, program, virtual, channel_name, title, earliest, latest,
+                days, timezone, format, pad_start, pad_end, active, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)'
+        );
+
+        $statement->execute([
+            $rule['device'],
+            $rule['physical'],
+            $rule['program'],
+            $rule['virtual'],
+            $rule['channelName'],
+            $rule['title'],
+            $rule['earliest'] ?? null,
+            $rule['latest'] ?? null,
+            $rule['days'] ?? null,
+            $rule['timezone'] ?? 'UTC',
+            in_array($rule['format'] ?? 'ts', self::FORMATS, true) ? $rule['format'] ?? 'ts' : 'ts',
+            $rule['padStart'] ?? 0,
+            $rule['padEnd'] ?? 0,
+            $now,
+            $now,
+        ]);
+
+        return (int) $this->db->lastInsertId();
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function findRule(string $device, int $physical, int $program, string $title): ?array
+    {
+        $statement = $this->db->prepare('SELECT * FROM rules WHERE device = ? AND physical = ? AND program = ? AND title = ?');
+        $statement->execute([$device, $physical, $program, $title]);
+        $row = $statement->fetch();
+
+        return $row === false ? null : self::castRule($row);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function getRules(?string $device = null, bool $activeOnly = false): array
+    {
+        $where      = [];
+        $parameters = [];
+
+        if ($device !== null) {
+            $where[]      = 'device = ?';
+            $parameters[] = $device;
+        }
+
+        if ($activeOnly) {
+            $where[] = 'active = 1';
+        }
+
+        $sql       = 'SELECT * FROM rules' . ($where === [] ? '' : ' WHERE ' . implode(' AND ', $where)) . ' ORDER BY title';
+        $statement = $this->db->prepare($sql);
+        $statement->execute($parameters);
+
+        return array_map([self::class, 'castRule'], $statement->fetchAll());
+    }
+
+    public function deleteRule(int $id): bool
+    {
+        $statement = $this->db->prepare('DELETE FROM rules WHERE id = ?');
+        $statement->execute([$id]);
+
+        return $statement->rowCount() > 0;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private static function castRule(array $row): array
+    {
+        return [
+            'id'          => (int) $row['id'],
+            'device'      => $row['device'],
+            'physical'    => (int) $row['physical'],
+            'program'     => (int) $row['program'],
+            'virtual'     => $row['virtual'],
+            'channelName' => $row['channel_name'],
+            'title'       => $row['title'],
+            'earliest'    => $row['earliest'] === null ? null : (int) $row['earliest'],
+            'latest'      => $row['latest'] === null ? null : (int) $row['latest'],
+            'days'        => $row['days'],
+            'timezone'    => $row['timezone'],
+            'format'      => $row['format'],
+            'padStart'    => (int) $row['pad_start'],
+            'padEnd'      => (int) $row['pad_end'],
+            'active'      => (int) $row['active'] === 1,
+            'createdAt'   => (int) $row['created_at'],
+            'updatedAt'   => (int) $row['updated_at'],
+        ];
+    }
+
     private function migrate(): void
     {
         $this->db->exec(
@@ -464,7 +579,27 @@ class RecordingStore
                 convert_error TEXT,
                 updated_at INTEGER NOT NULL
             );
-            CREATE INDEX IF NOT EXISTS recordings_by_status ON recordings (status);'
+            CREATE INDEX IF NOT EXISTS recordings_by_status ON recordings (status);
+            CREATE TABLE IF NOT EXISTS rules (
+                id INTEGER PRIMARY KEY,
+                device TEXT NOT NULL,
+                physical INTEGER NOT NULL,
+                program INTEGER NOT NULL,
+                virtual TEXT NOT NULL,
+                channel_name TEXT NOT NULL,
+                title TEXT NOT NULL,
+                earliest INTEGER,
+                latest INTEGER,
+                days TEXT,
+                timezone TEXT NOT NULL DEFAULT "UTC",
+                format TEXT NOT NULL DEFAULT "ts",
+                pad_start INTEGER NOT NULL DEFAULT 0,
+                pad_end INTEGER NOT NULL DEFAULT 0,
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                UNIQUE (device, physical, program, title)
+            );'
         );
 
         // "IF NOT EXISTS" leaves an existing table as it was, so columns added after the

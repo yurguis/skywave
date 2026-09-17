@@ -19,6 +19,7 @@ declare(strict_types=1);
 use Skywave\Dvr\Recorder;
 use Skywave\Dvr\RecordingPlayback;
 use Skywave\Dvr\RecordingStore;
+use Skywave\Dvr\SeriesRules;
 use Skywave\Dvr\TunerReservations;
 use Skywave\Guide\ChannelLogos;
 use Skywave\Guide\GuideJobs;
@@ -137,7 +138,19 @@ if (str_starts_with($path, '/api/')) {
         $playback     = null;
     }
 
-    (new Api(new Discovery(), $hosts, LiveStreams::fromEnvironment(), $guide, $guideJobs, $recordings, $recorder, $reservations, $playback, Logs::fromEnvironment()))
+    (new Api(
+        new Discovery(),
+        $hosts,
+        LiveStreams::fromEnvironment(),
+        $guide,
+        $guideJobs,
+        $recordings,
+        $recorder,
+        $reservations,
+        $playback,
+        Logs::fromEnvironment(),
+        $guide !== null && $recordings !== null ? new SeriesRules($guide, $recordings) : null
+    ))
         ->handle(Request::createFromGlobals())
         ->send();
 

@@ -1872,6 +1872,18 @@ function createGuideView(device, player) {
       }, '✓ Scheduled · cancel');
     }
 
+    // A standing rule for this title covers every showing, so it is offered instead of a
+    // second one, and cancelling it is what the button then does.
+    const rule = state.recordingsView?.ruleFor(channel, event.title) ?? null;
+
+    if (rule !== null) {
+      return h('button', {
+        type: 'button',
+        class: 'secondary record is-recording',
+        onclick: (clickEvent) => recordingAction(`/api/recordings/rules/${rule.id}`, { method: 'DELETE' }, clickEvent.currentTarget, 'Cancelling…'),
+      }, '✓ Recording every episode · stop');
+    }
+
     const formats = state.recordingsView?.formats() ?? [];
     const chosen = h('select', { class: 'record-format', 'aria-label': 'What to keep' },
       formats.map((format) => h('option', {
@@ -1886,8 +1898,38 @@ function createGuideView(device, player) {
         disabled: channel.encrypted,
         onclick: (clickEvent) => record(channel, event, clickEvent.currentTarget, chosen.value),
       }, onNow ? '● Record the rest' : '● Record'),
+      h('button', {
+        type: 'button',
+        class: 'secondary record',
+        disabled: channel.encrypted,
+        title: 'Record this whenever it is on this channel',
+        onclick: (clickEvent) => recordSeries(channel, event, clickEvent.currentTarget, chosen.value),
+      }, '● All episodes'),
       formats.length > 1 && chosen,
     );
+  }
+
+  /**
+   * Keep recording a title on a channel. The broadcast guide only reaches half a day
+   * ahead, so the rule is kept and applied to each guide update rather than scheduling
+   * anything far in advance.
+   */
+  async function recordSeries(channel, event, button, format) {
+    await recordingAction('/api/recordings/rules', {
+      method: 'POST',
+      body: JSON.stringify({
+        device: host,
+        physical: channel.physical,
+        program: channel.program,
+        virtual: channel.virtual,
+        channelName: channel.name,
+        title: event.title,
+        format,
+        // The hours in a rule mean the hours where the person setting it lives, and keep
+        // meaning that after the clocks change.
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      }),
+    }, button, 'Scheduling…');
   }
 
   function recordingProgressText(recording) {
@@ -2005,6 +2047,11 @@ function createRecordingsView(device, player) {
   const notice = h('div', { class: 'guide-notice', hidden: true });
   const scheduled = h('div', { class: 'recordings' });
   const recorded = h('div', { class: 'recordings' });
+  const series = h('div', { class: 'recordings' });
+  const seriesCard = h('section', { class: 'card', hidden: true },
+    h('h3', {}, 'Series'),
+    series,
+  );
 
   const root = h('div', { class: 'view', hidden: true },
     h('section', { class: 'card' },
@@ -2012,6 +2059,7 @@ function createRecordingsView(device, player) {
       notice,
       scheduled,
     ),
+    seriesCard,
     h('section', { class: 'card' },
       h('h3', {}, 'Recorded'),
       recorded,
@@ -2090,6 +2138,28 @@ function createRecordingsView(device, player) {
           }, 'Cancel')],
       }))));
 
+    // A rule has no time of its own: it stands until cancelled, so it gets a plainer row
+    // than a schedule or a recording.
+    const rules = data.rules ?? [];
+    seriesCard.hidden = rules.length === 0;
+
+    series.replaceChildren(...rules.map((rule) => h('div', { class: 'recording' },
+      h('span', { class: 'what' },
+        h('span', { class: 'title' }, rule.title),
+        h('span', { class: 'muted series-when' },
+          `${rule.virtual} ${rule.channelName} · every showing`
+          + (rule.days ? ` · ${describeDays(rule.days)}` : '')
+          + (rule.earliest !== null && rule.latest !== null ? ` · ${clockOf(rule.earliest)}–${clockOf(rule.latest)}` : '')),
+      ),
+      h('span', { class: 'actions' },
+        h('button', {
+          type: 'button',
+          class: 'secondary',
+          onclick: (clickEvent) => act(`/api/recordings/rules/${rule.id}`, { method: 'DELETE' }, clickEvent.currentTarget, 'Cancelling…'),
+        }, 'Cancel'),
+      ),
+    )));
+
     recorded.replaceChildren(...(data.recordings.length === 0
       ? [h('p', { class: 'muted' }, 'Nothing recorded yet.')]
       : data.recordings.map((recording) => row({
@@ -2119,6 +2189,16 @@ function createRecordingsView(device, player) {
             }, 'Delete'),
           ],
       }))));
+  }
+
+  function clockOf(minutes) {
+    return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+  }
+
+  function describeDays(days) {
+    const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+    return String(days).split(',').map((day) => names[Number(day) - 1] ?? day).join(' ');
   }
 
   function row({ when, title, subtitle, progress, error, status, actions }) {
@@ -2237,6 +2317,13 @@ function createRecordingsView(device, player) {
 
     defaultFormat() {
       return data?.defaultFormat ?? 'ts';
+    },
+
+    /** The standing rule covering a title on a channel, if there is one. */
+    ruleFor(channel, title) {
+      return (data?.rules ?? []).find((rule) => rule.physical === channel.physical
+        && rule.program === channel.program
+        && rule.title.toLowerCase() === String(title).toLowerCase()) ?? null;
     },
 
     /** The schedule covering one guide showing, so the guide can offer to cancel or stop it. */

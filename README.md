@@ -191,6 +191,35 @@ conversion runs about 20 times faster than playback, so it starts within seconds
 can seek anywhere already converted. Those segments live in a hidden `.playback` folder
 beside the recordings and are deleted a minute after the last viewer stops watching.
 
+### Series
+
+**Record all episodes** in a program's details keeps recording it. A broadcast carries only
+about twelve hours of guide, so nothing can be scheduled a week ahead: the rule is kept
+instead, and every guide update schedules whatever has just come into view and matches. A
+listing that changes next week is never wrong, because nothing was claimed about next week.
+
+What a rule can match is limited by what the air carries. ATSC has no series identifier and
+no repeat flag, and here only about one event in twenty carries a description, so a rule
+matches **a title on a channel** — every showing of it.
+
+A rule can also be narrowed to a range of hours and a set of weekdays, which is how you take
+the evening showing and leave the small-hours repeat alone:
+
+> Jeopardy!, on 6.1, weekdays between 18:00 and 20:00
+
+The page does not offer that yet; for now it is set through `POST /api/recordings/rules`
+with `earliest`, `latest` (minutes past midnight) and `days` (1 is Monday). Hours are read in
+the time zone of the browser that made the rule, so they keep meaning the same thing when the
+clocks change.
+
+A showing already scheduled, recorded or cancelled is never picked up again, and asking for
+the same series twice makes one rule, not two. One rule schedules at most eight showings in a
+single pass: some channels run the same programme all afternoon, and one press should not
+take every tuner. The rest are picked up by later passes, as the earlier ones finish.
+
+Rules are listed in the Recordings tab, where they can be cancelled. Cancelling one leaves
+the recordings it already made, and any showing already scheduled.
+
 ### Logs
 
 The Logs tab shows what the services wrote down, so a failed recording or a guide scan

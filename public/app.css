@@ -716,8 +716,12 @@ button.record.is-recording,
   .video-wrap button.overlay-record.is-recording { animation: none; }
 }
 
-.record-choice { display: inline-flex; align-items: center; gap: 6px; }
+/* Record, all episodes, and what to keep: three controls that must still fit a phone. */
+.record-choice { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .record-choice .record-format { padding: 6px 8px; }
+
+.series-rule { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.series-rule .series-when { color: var(--muted); font-size: 12.5px; }
 
 @media (max-width: 520px) {
   .recording { grid-template-columns: minmax(0, 1fr); }

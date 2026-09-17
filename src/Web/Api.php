@@ -12,6 +12,7 @@ use RuntimeException;
 use Skywave\Dvr\Recorder;
 use Skywave\Dvr\RecordingPlayback;
 use Skywave\Dvr\RecordingStore;
+use Skywave\Dvr\SeriesRules;
 use Skywave\Dvr\TunerReservations;
 use Skywave\Guide\GuideJobs;
 use Skywave\Guide\GuideStore;
@@ -89,6 +90,8 @@ class Api
 
     private ?Logs $logs;
 
+    private ?SeriesRules $series;
+
     /**
      * @param string[] $configuredHosts devices to list even when broadcast discovery cannot reach them
      * @param LiveStreams|null $streams live playback, or null to disable it
@@ -109,7 +112,8 @@ class Api
         ?Recorder $recorder = null,
         ?TunerReservations $reservations = null,
         ?RecordingPlayback $playback = null,
-        ?Logs $logs = null
+        ?Logs $logs = null,
+        ?SeriesRules $series = null
     ) {
         $this->discovery       = $discovery;
         $this->configuredHosts = $configuredHosts;
@@ -121,6 +125,7 @@ class Api
         $this->reservations    = $reservations;
         $this->playback        = $playback;
         $this->logs            = $logs;
+        $this->series          = $series;
     }
 
     public function handle(Request $request): JsonResponse
@@ -797,7 +802,26 @@ class Api
                 'defaultFormat' => self::environmentValue('RECORDING_FORMAT', 'ts'),
                 'schedules'     => $store->getSchedules($device),
                 'recordings'    => $store->getRecordings($device),
+                // Standing rules ride along with the list the page already polls.
+                'rules' => $store->getRules($device),
             ];
+        }
+
+        if ($path === '/api/recordings/rules') {
+            if ($method === 'POST') {
+                return $this->addSeriesRule(self::jsonBody($request));
+            }
+
+            self::requireMethod($method, 'GET');
+            $device = (string) $request->query->get('device', '');
+
+            return ['rules' => $store->getRules($device === '' ? null : self::validateHost($device))];
+        }
+
+        if (preg_match('#^/api/recordings/rules/(\d+)$#', $path, $match)) {
+            self::requireMethod($method, 'DELETE');
+
+            return ['cancelled' => $store->deleteRule((int) $match[1])];
         }
 
         if (preg_match('#^/api/recordings/schedules/(\d+)$#', $path, $match)) {
@@ -823,6 +847,99 @@ class Api
         self::requireMethod($method, 'DELETE');
 
         return $this->deleteRecording((int) $match[1]);
+    }
+
+    /**
+     * Record every showing of a title on one channel.
+     *
+     * The rule is evaluated straight away, so whatever is already in the guide is scheduled
+     * now rather than whenever the guide next refreshes.
+     *
+     * @param array<string, mixed> $body
+     * @return array<string, mixed>
+     */
+    private function addSeriesRule(array $body): array
+    {
+        $store = $this->recordingStore();
+        $title = trim(is_string($body['title'] ?? null) ? $body['title'] : '');
+
+        if ($title === '') {
+            throw new ApiException('Expected {"title": "<program>"}', 400);
+        }
+
+        $format = is_string($body['format'] ?? null) ? $body['format'] : self::environmentValue('RECORDING_FORMAT', 'ts');
+
+        if (!in_array($format, RecordingStore::FORMATS, true)) {
+            throw new ApiException('Expected "format" to be one of: ' . implode(', ', RecordingStore::FORMATS), 400);
+        }
+
+        $rule = [
+            'device'      => self::validateHost(is_string($body['device'] ?? null) ? $body['device'] : ''),
+            'physical'    => self::positiveInteger($body['physical'] ?? null, 'physical'),
+            'program'     => self::positiveInteger($body['program'] ?? null, 'program'),
+            'virtual'     => is_string($body['virtual'] ?? null) ? $body['virtual'] : '',
+            'channelName' => is_string($body['channelName'] ?? null) ? $body['channelName'] : '',
+            'title'       => $title,
+            'earliest'    => self::minuteOfDay($body['earliest'] ?? null),
+            'latest'      => self::minuteOfDay($body['latest'] ?? null),
+            'days'        => self::weekdays($body['days'] ?? null),
+            'timezone'    => is_string($body['timezone'] ?? null) && $body['timezone'] !== '' ? $body['timezone'] : 'UTC',
+            'format'      => $format,
+            'padStart'    => self::padding($body['padStart'] ?? null, 'RECORDING_PAD_START', 60),
+            'padEnd'      => self::padding($body['padEnd'] ?? null, 'RECORDING_PAD_END', 180),
+        ];
+
+        $id = $store->addRule($rule);
+
+        // Only this device: a rule for one tuner has no business sweeping the others.
+        $scheduled = $this->series === null ? 0 : $this->series->evaluate($rule['device'])['scheduled'];
+
+        return [
+            'rule'      => $store->findRule($rule['device'], $rule['physical'], $rule['program'], $rule['title']),
+            'id'        => $id,
+            'scheduled' => $scheduled,
+        ];
+    }
+
+    /**
+     * Minutes since midnight, or null for "any time".
+     *
+     * @param mixed $value
+     */
+    private static function minuteOfDay($value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (!is_int($value) || $value < 0 || $value > 1439) {
+            throw new ApiException('Expected a minute of the day between 0 and 1439', 400);
+        }
+
+        return $value;
+    }
+
+    /**
+     * ISO weekday numbers as "1,2,3", or null for every day.
+     *
+     * @param mixed $value
+     */
+    private static function weekdays($value): ?string
+    {
+        if ($value === null || $value === '' || $value === []) {
+            return null;
+        }
+
+        $days = is_array($value) ? $value : explode(',', (string) $value);
+        $days = array_map('intval', array_map('trim', array_map('strval', $days)));
+
+        foreach ($days as $day) {
+            if ($day < 1 || $day > 7) {
+                throw new ApiException('Expected weekdays between 1 (Monday) and 7 (Sunday)', 400);
+            }
+        }
+
+        return implode(',', array_unique($days));
     }
 
     /**
