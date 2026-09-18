@@ -1820,9 +1820,11 @@ function createGuideView(device, player) {
       ...channels.map((channel) => h('div', { class: 'guide-row' },
         h('div', { class: 'guide-channel', title: `${channel.virtual} ${channel.name}` },
           channelLogo(channel.virtual, channel.logo),
+          // The badge is a sibling of the name, not inside it: the name is what truncates,
+          // and a badge within it was cut off along with the text it followed.
           h('span', { class: 'guide-channel-name' },
-            h('b', {}, channel.virtual), ' ', channel.name,
-            channel.hd && h('span', { class: 'badge hd' }, 'HD')),
+            h('b', {}, channel.virtual), ' ', channel.name),
+          channel.hd && h('span', { class: 'badge hd' }, 'HD'),
         ),
         h('div', { class: 'guide-track' },
           channel.events.length === 0 && h('div', { class: 'guide-empty' }, 'No guide data'),
