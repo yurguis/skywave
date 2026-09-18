@@ -651,7 +651,18 @@ details > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 
 /* Pinned to the right edge of every row so the badges line up as a column, and never
    squeezed: a long station name shortens itself rather than pushing the badge out. */
-.guide-channel .badge.hd { margin-left: auto; flex: none; }
+.guide-channel-badges { display: flex; gap: 4px; margin-left: auto; flex: none; }
+.guide-channel-badges .badge { margin-left: 0; }
+
+/* What the row is, where it cannot simply be watched. ATSC 3.0 carries AC-4 audio that
+   ffmpeg cannot decode, and every one of these is encrypted besides, so the row is listed
+   greyed rather than offered. */
+.badge.tag-atsc3 { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); }
+.badge.tag-drm { background: color-mix(in srgb, var(--red) 15%, transparent); color: var(--red); }
+
+.guide-row.is-unsupported .guide-channel-name,
+.guide-row.is-unsupported .guide-empty { color: var(--muted); }
+.guide-row.is-unsupported .channel-logo { opacity: .55; }
 
 /* What a recording is, at a glance. Tinted the same way the tuner badges are, so the list
    reads as colour rather than as another row of grey pills. */

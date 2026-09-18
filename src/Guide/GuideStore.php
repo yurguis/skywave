@@ -120,6 +120,81 @@ class GuideStore
     }
 
     /**
+     * Replace the ATSC 3.0 stations known for a device.
+     *
+     * Deliberately not in `channels`: that table drives scanning, tuning and recording, and
+     * nothing here can tune ATSC 3.0. Putting them there would have the collector trying to
+     * tune physical channels that carry no transport stream.
+     *
+     * @param list<array<string, mixed>> $channels
+     */
+    public function saveAtsc3Lineup(string $device, array $channels): void
+    {
+        $now = time();
+
+        $this->transaction(function () use ($device, $channels, $now): void {
+            // The device's lineup is the whole truth for this device, so what it no longer
+            // reports should not linger.
+            $this->db->prepare('DELETE FROM atsc3_channels WHERE device = ?')->execute([$device]);
+
+            $insert = $this->db->prepare(
+                'INSERT INTO atsc3_channels (device, virtual, name, video_codec, audio_codec, drm, hd, updated_at)
+                 VALUES (:device, :virtual, :name, :video, :audio, :drm, :hd, :now)'
+            );
+
+            foreach ($channels as $channel) {
+                $insert->execute([
+                    'device'  => $device,
+                    'virtual' => (string) $channel['virtual'],
+                    'name'    => (string) $channel['name'],
+                    'video'   => $channel['videoCodec'] ?? null,
+                    'audio'   => $channel['audioCodec'] ?? null,
+                    'drm'     => empty($channel['drm']) ? 0 : 1,
+                    'hd'      => empty($channel['hd']) ? 0 : 1,
+                    'now'     => $now,
+                ]);
+            }
+        });
+    }
+
+    /**
+     * ATSC 3.0 stations, shaped like guide channels so the page draws them in the same
+     * list. They never carry events: a 3.0 multiplex has no PSIP tables to read.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function getAtsc3Lineup(?string $device = null): array
+    {
+        $statement = $device === null
+            ? $this->db->query('SELECT * FROM atsc3_channels')
+            : $this->db->prepare('SELECT * FROM atsc3_channels WHERE device = ?');
+
+        if ($device !== null) {
+            $statement->execute([$device]);
+        }
+
+        return array_map(static fn (array $row): array => [
+            // A string id keeps these clear of the integer ids real channels carry.
+            'id'       => 'atsc3:' . $row['device'] . ':' . $row['virtual'],
+            'device'   => $row['device'],
+            'physical' => null,
+            'program'  => null,
+            'virtual'  => (string) $row['virtual'],
+            'name'     => (string) $row['name'],
+            'tsid'     => null,
+            'audio'    => null,
+            'hd'       => (bool) $row['hd'],
+            'drm'      => (bool) $row['drm'],
+            'atsc3'    => true,
+            // What disables Watch in the page, which is what an encrypted station deserves.
+            'encrypted'  => (bool) $row['drm'],
+            'videoCodec' => $row['video_codec'],
+            'audioCodec' => $row['audio_codec'],
+            'events'     => [],
+        ], $statement === false ? [] : $statement->fetchAll());
+    }
+
+    /**
      * Store the guide read from one physical channel's tables.
      *
      * Events replace whatever the channel had in the time span they cover, so schedule
@@ -231,6 +306,14 @@ class GuideStore
             ], $events->fetchAll());
             $guide[] = $channel;
         }
+
+        // Listed alongside the rest so the numbering reads in order, but carrying no
+        // events and marked so the page can say why.
+        foreach ($this->getAtsc3Lineup($device) as $channel) {
+            $guide[] = $channel;
+        }
+
+        usort($guide, fn (array $a, array $b) => [$a['device'], self::virtualKey($a['virtual'])] <=> [$b['device'], self::virtualKey($b['virtual'])]);
 
         return $guide;
     }
@@ -462,6 +545,17 @@ class GuideStore
                 key TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
                 checked_at INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS atsc3_channels (
+                device TEXT NOT NULL,
+                virtual TEXT NOT NULL,
+                name TEXT NOT NULL,
+                video_codec TEXT,
+                audio_codec TEXT,
+                drm INTEGER NOT NULL DEFAULT 0,
+                hd INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL,
+                UNIQUE (device, virtual)
             );
             CREATE TABLE IF NOT EXISTS devices (
                 host TEXT PRIMARY KEY,

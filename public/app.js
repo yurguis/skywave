@@ -1817,17 +1817,22 @@ function createGuideView(device, player) {
 
     grid.replaceChildren(
       h('div', { class: 'guide-row guide-header' }, h('div', { class: 'guide-channel' }), h('div', { class: 'guide-track' }, ticks, nowMarker())),
-      ...channels.map((channel) => h('div', { class: 'guide-row' },
+      ...channels.map((channel) => h('div', { class: channel.atsc3 ? 'guide-row is-unsupported' : 'guide-row' },
         h('div', { class: 'guide-channel', title: `${channel.virtual} ${channel.name}` },
           channelLogo(channel.virtual, channel.logo),
-          // The badge is a sibling of the name, not inside it: the name is what truncates,
+          // The badges are siblings of the name, not inside it: the name is what truncates,
           // and a badge within it was cut off along with the text it followed.
           h('span', { class: 'guide-channel-name' },
             h('b', {}, channel.virtual), ' ', channel.name),
-          channel.hd && h('span', { class: 'badge hd' }, 'HD'),
+          h('span', { class: 'guide-channel-badges' },
+            channel.hd && h('span', { class: 'badge hd' }, 'HD'),
+            channel.atsc3 && h('span', { class: 'badge tag-atsc3' }, '3.0'),
+            channel.drm && h('span', { class: 'badge tag-drm' }, 'DRM'),
+          ),
         ),
         h('div', { class: 'guide-track' },
-          channel.events.length === 0 && h('div', { class: 'guide-empty' }, 'No guide data'),
+          channel.events.length === 0 && h('div', { class: 'guide-empty' },
+            channel.atsc3 ? 'ATSC 3.0 — cannot be tuned here' : 'No guide data'),
           channel.events.map((event) => {
             const left = Math.max(0, (event.start - start) / span) * 100;
             const right = Math.min(1, (event.start + event.duration - start) / span) * 100;

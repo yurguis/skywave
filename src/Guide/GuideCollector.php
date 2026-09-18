@@ -87,7 +87,12 @@ class GuideCollector
                 }
             });
 
-            $this->store->saveLineup($host, self::withHdFlags($device, $channels));
+            // One request to the device serves both: which channels it calls high
+            // definition, and which are ATSC 3.0. The latter are kept apart from the
+            // lineup proper, since nothing here can tune them.
+            $rows = self::lineupRows($device);
+            $this->store->saveLineup($host, self::withHdFlags($channels, $rows));
+            $this->store->saveAtsc3Lineup($host, self::atsc3Channels($rows));
             $this->store->finishRun($run, count($channels), 0);
             ($this->log)(sprintf('Scan finished: %d programs', count($channels)));
 
@@ -115,9 +120,12 @@ class GuideCollector
             $physicals = $this->physicalChannels($host);
         }
 
-        // The device knows which channels are high definition and the broadcast does not,
-        // so refresh that here rather than making people wait for the next channel scan.
-        $this->store->setHdFlags($host, self::hdByVirtual($device));
+        // The device knows which channels are high definition and which are ATSC 3.0, and
+        // the broadcast says neither, so refresh both here rather than making people wait
+        // for the next channel scan.
+        $rows = self::lineupRows($device);
+        $this->store->setHdFlags($host, self::hdByVirtual($rows));
+        $this->store->saveAtsc3Lineup($host, self::atsc3Channels($rows));
 
         $run       = $this->store->startRun($host, 'collect');
         $startedAt = time();
@@ -189,32 +197,21 @@ class GuideCollector
      * @param list<array<string, mixed>> $channels
      * @return list<array<string, mixed>>
      */
-    private static function withHdFlags(Device $device, array $channels): array
+    private static function withHdFlags(array $channels, array $rows): array
     {
-        $hd = self::hdByVirtual($device);
+        $hd = self::hdByVirtual($rows);
 
         return array_map(fn (array $channel) => $channel + ['hd' => $hd[$channel['virtual']] ?? false], $channels);
     }
 
     /**
-     * The device's own lineup, as virtual channel to whether it is high definition. A
-     * device that will not answer leaves every channel unflagged.
+     * Virtual channel number to whether the device calls it high definition.
      *
+     * @param list<array<string, mixed>> $rows
      * @return array<string, bool>
      */
-    private static function hdByVirtual(Device $device): array
+    private static function hdByVirtual(array $rows): array
     {
-        $lineup = @file_get_contents(
-            sprintf('http://%s/lineup.json', $device->getHost()),
-            false,
-            stream_context_create(['http' => ['timeout' => 5.0]])
-        );
-        $rows = $lineup === false ? null : json_decode($lineup, true);
-
-        if (!is_array($rows)) {
-            return [];
-        }
-
         $hd = [];
 
         foreach ($rows as $row) {
@@ -226,6 +223,64 @@ class GuideCollector
         }
 
         return $hd;
+    }
+
+    /**
+     * The device's own lineup, straight from lineup.json. A device that will not answer
+     * leaves every channel unflagged and reports no ATSC 3.0 stations.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function lineupRows(Device $device): array
+    {
+        $lineup = @file_get_contents(
+            sprintf('http://%s/lineup.json', $device->getHost()),
+            false,
+            stream_context_create(['http' => ['timeout' => 5.0]])
+        );
+        $rows = $lineup === false ? null : json_decode($lineup, true);
+
+        return is_array($rows) ? array_values(array_filter($rows, 'is_array')) : [];
+    }
+
+    /**
+     * The ATSC 3.0 stations the device can see.
+     *
+     * A scan cannot find these: 3.0 carries ROUTE/DASH over ALP rather than an MPEG
+     * transport stream, so there are no PSIP tables to read and no programme data to be
+     * had. The device's own lineup is the only place they appear, and they are listed so
+     * that what is on the air is visible, not because anything here can play them.
+     *
+     * @param list<array<string, mixed>> $rows
+     * @return list<array<string, mixed>>
+     */
+    private static function atsc3Channels(array $rows): array
+    {
+        $channels = [];
+
+        foreach ($rows as $row) {
+            $virtual = (string) ($row['GuideNumber'] ?? '');
+            $video   = (string) ($row['VideoCodec'] ?? '');
+            $audio   = (string) ($row['AudioCodec'] ?? '');
+
+            if ($virtual === '' || ($video !== 'HEVC' && $audio !== 'AC4')) {
+                continue;
+            }
+
+            // The device writes "None" rather than omitting the flag.
+            $drm = $row['DRM'] ?? null;
+
+            $channels[] = [
+                'virtual'    => $virtual,
+                'name'       => (string) ($row['GuideName'] ?? $virtual),
+                'videoCodec' => $video === '' ? null : $video,
+                'audioCodec' => $audio === '' ? null : $audio,
+                'drm'        => !in_array($drm, [null, 'None', 0, '0', false], true),
+                'hd'         => ($row['HD'] ?? 0) === 1,
+            ];
+        }
+
+        return $channels;
     }
 
     /**
