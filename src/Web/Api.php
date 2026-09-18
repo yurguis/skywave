@@ -805,7 +805,7 @@ class Api
                 'formats'       => RecordingStore::FORMATS,
                 'defaultFormat' => self::environmentValue('RECORDING_FORMAT', 'ts'),
                 'schedules'     => $store->getSchedules($device),
-                'recordings'    => self::withHdFlags($store->getRecordings($device), $this->guide),
+                'recordings'    => self::withArtwork(self::withHdFlags($store->getRecordings($device), $this->guide)),
                 // Standing rules ride along with the list the page already polls.
                 'rules' => $store->getRules($device),
             ];
@@ -881,6 +881,27 @@ class Api
 
             return $channel;
         }, $channels);
+    }
+
+    /**
+     * Mark the recordings that have a picture, on the same terms as the guide.
+     *
+     * @param list<array<string, mixed>> $recordings
+     * @return list<array<string, mixed>>
+     */
+    private static function withArtwork(array $recordings): array
+    {
+        if ($recordings === []) {
+            return $recordings;
+        }
+
+        $artwork = ProgrammeArtwork::fromEnvironment();
+
+        return array_map(static function (array $recording) use ($artwork): array {
+            $recording['art'] = $artwork->pathFor((string) ($recording['title'] ?? '')) !== null;
+
+            return $recording;
+        }, $recordings);
     }
 
     /**

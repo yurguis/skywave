@@ -3,6 +3,7 @@
 namespace Skywave\Tests\Web;
 
 use PHPUnit\Framework\TestCase;
+use Skywave\Dvr\RecordingStore;
 use Skywave\Guide\GuideStore;
 use Skywave\Guide\ProgrammeArtwork;
 use Skywave\Hdhomerun\Discovery;
@@ -92,6 +93,49 @@ class GuidePicturesTest extends TestCase
         }
 
         $this->assertSame(['Criminal Minds' => true, 'Paid Programming' => false], $art);
+    }
+
+    public function testARecordingWithAPictureSaysSo(): void
+    {
+        $recordings = new RecordingStore($this->directory . '/guide.sqlite');
+        $this->addRecording($recordings, 'Criminal Minds');
+        $this->addRecording($recordings, 'Paid Programming');
+        file_put_contents($this->directory . '/artwork/' . ProgrammeArtwork::key('Criminal Minds') . '.jpg', 'pretend jpeg');
+
+        $api      = new Api(new Discovery(), [], null, $this->guide, null, $recordings);
+        $response = $api->handle(Request::create('/api/recordings', 'GET'));
+        $body     = json_decode((string) $response->getContent(), true);
+
+        $art = [];
+
+        foreach ($body['recordings'] as $recording) {
+            $art[$recording['title']] = $recording['art'];
+        }
+
+        // Order is the list's business, not this test's.
+        $this->assertTrue($art['Criminal Minds']);
+        $this->assertFalse($art['Paid Programming']);
+    }
+
+    private function addRecording(RecordingStore $recordings, string $title): void
+    {
+        $recordings->addRecording([
+            'scheduleId'  => null,
+            'device'      => self::DEVICE,
+            'physical'    => 29,
+            'program'     => 3,
+            'virtual'     => '6.1',
+            'channelName' => 'WTVJ',
+            'title'       => $title,
+            'description' => null,
+            'path'        => $title . '.ts',
+            'format'      => 'ts',
+            'tuner'       => 0,
+            'pid'         => 1234,
+            'startedAt'   => time() - 3600,
+            'stopsAt'     => time() - 60,
+            'reservation' => null,
+        ]);
     }
 
     /**

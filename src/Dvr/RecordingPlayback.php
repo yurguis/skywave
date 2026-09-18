@@ -344,7 +344,10 @@ class RecordingPlayback
             '-vf', sprintf('estdif=mode=frame:deint=interlaced,scale=w=-2:h=trunc(min(%d\,ih)/2)*2', $this->height),
             '-fps_mode', 'passthrough',
             '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-crf', '21',
-            '-c:a', 'aac', '-ac', '2',
+            // No downmix: a 5.1 broadcast is streamed as 5.1, in whatever language it
+            // carries. Browsers decode multi-channel AAC, and flattening it here threw
+            // away surround the air had already sent.
+            '-c:a', 'aac',
             '-f', 'hls',
             '-hls_time', (string) self::SEGMENT_SECONDS,
             '-hls_playlist_type', 'event',
@@ -373,7 +376,10 @@ class RecordingPlayback
             '-vf', sprintf('estdif=mode=frame:deint=interlaced,scale=w=-2:h=trunc(min(%d\,ih)/2)*2', $this->height),
             '-fps_mode', 'passthrough',
             '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-crf', '21',
-            '-c:a', 'aac', '-ac', '2',
+            // No downmix: a 5.1 broadcast is streamed as 5.1, in whatever language it
+            // carries. Browsers decode multi-channel AAC, and flattening it here threw
+            // away surround the air had already sent.
+            '-c:a', 'aac',
             '-f', 'hls',
             '-hls_time', (string) self::SEGMENT_SECONDS,
             // An event playlist only grows, so the viewer can seek across everything

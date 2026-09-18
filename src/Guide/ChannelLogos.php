@@ -152,9 +152,12 @@ class ChannelLogos
 
     private function download(string $url): ?string
     {
-        $image = @file_get_contents($url, false, $this->context(), 0, self::MAXIMUM_BYTES);
+        // One byte past the limit, so a logo that fills it exactly is known to have been cut
+        // off rather than mistaken for a whole one: a header check cannot tell the
+        // difference, and a truncated image draws as half of one.
+        $image = @file_get_contents($url, false, $this->context(), 0, self::MAXIMUM_BYTES + 1);
 
-        if ($image === false || $image === '') {
+        if ($image === false || $image === '' || strlen($image) > self::MAXIMUM_BYTES) {
             return null;
         }
 

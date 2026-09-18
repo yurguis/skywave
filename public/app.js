@@ -2216,6 +2216,7 @@ function createRecordingsView(device, player) {
       ? [h('p', { class: 'muted' }, 'Nothing recorded yet.')]
       : data.recordings.map((recording) => row({
         when: recording.startedAt,
+        art: recordingArt(recording),
         title: [recording.title, ...recordingBadges(recording)],
         subtitle: `${recording.virtual} ${recording.channelName} · ${formatBytes(recording.bytes)}${describeCopy(recording)}`,
         progress: recording.status === 'recording' ? progressFor(recording) : null,
@@ -2334,9 +2335,28 @@ function createRecordingsView(device, player) {
     return String(days).split(',').map((day) => names[Number(day) - 1] ?? day).join(' ');
   }
 
-  function row({ when, title, subtitle, progress, error, status, actions }) {
-    return h('div', { class: 'recording' },
+  // The list keeps a column for pictures whether or not a given recording has one, so the
+  // titles stay in a straight line. A picture that fails to load hides for the same reason,
+  // rather than removing itself and dragging the row across.
+  function recordingArt(recording) {
+    if (!recording.title || !recording.art) return h('span', { class: 'art' });
+
+    const art = h('img', {
+      class: 'art',
+      src: `/artwork?title=${encodeURIComponent(recording.title)}`,
+      alt: '',
+      loading: 'lazy',
+    });
+
+    art.addEventListener('error', () => { art.style.visibility = 'hidden'; });
+
+    return art;
+  }
+
+  function row({ when, art, title, subtitle, progress, error, status, actions }) {
+    return h('div', { class: art ? 'recording with-art' : 'recording' },
       h('span', { class: 'when muted' }, `${dayFormat.format(when * 1000)}, ${timeFormat.format(when * 1000)}`),
+      art,
       h('span', { class: 'what' },
         h('span', { class: 'title' }, title),
         h('span', { class: 'muted' }, subtitle),
