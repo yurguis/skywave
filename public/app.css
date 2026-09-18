@@ -713,6 +713,17 @@ details > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
   border-bottom: 1px solid var(--border);
 }
 
+/* A recording shows its poster between the date and the title. Rows without one keep the
+   empty column: a ragged left edge reads worse than a gap. */
+.recording.with-art { grid-template-columns: 170px 46px minmax(0, 1fr) auto; }
+
+.recording .art {
+  width: 46px;
+  aspect-ratio: 2 / 3;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
 .recording:last-child { border-bottom: 0; }
 .recording .what { display: grid; gap: 2px; min-width: 0; }
 .recording .title { font-weight: 500; }
@@ -759,6 +770,11 @@ button.record.is-recording,
 
 @media (max-width: 520px) {
   .recording { grid-template-columns: minmax(0, 1fr); }
+
+  /* Narrow enough that the poster sits beside the title and everything else spans both. */
+  .recording.with-art { grid-template-columns: 46px minmax(0, 1fr); }
+  .recording.with-art .when,
+  .recording.with-art .actions { grid-column: 1 / -1; }
 }
 
 /* TVmaze asks for a link back in return for the data, and the licence speaks of crediting
