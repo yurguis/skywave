@@ -90,6 +90,22 @@ if (preg_match('#^/logos/([0-9.]{3,9})\.png$#', $path, $match)) {
 
 // Recordings: the converted playlist and segments, or the recorded file itself. Byte
 // ranges let a browser seek an mp4 and let anything else be downloaded properly.
+// Captions written beside a converted recording. A browser shows the ones carried inside a
+// playlist by itself, but not the ones inside a plain file, so these are served as a track.
+if (preg_match('#^/recordings/(\d+)/captions\.vtt$#', $path, $match)) {
+    $file = RecordingPlayback::fromEnvironment()->captionsFile((int) $match[1]);
+
+    if ($file === null) {
+        http_response_code(404);
+
+        return;
+    }
+
+    sendFile($file, 'text/vtt; charset=utf-8');
+
+    return;
+}
+
 if (preg_match('#^/recordings/(\d+)/(?:hls/([^/]+)|(file))$#', $path, $match)) {
     $playback = RecordingPlayback::fromEnvironment();
     $file     = ($match[3] ?? '') === 'file'
@@ -104,6 +120,13 @@ if (preg_match('#^/recordings/(\d+)/(?:hls/([^/]+)|(file))$#', $path, $match)) {
 
     $types = ['m3u8' => 'application/vnd.apple.mpegurl', 'ts' => 'video/mp2t', 'mp4' => 'video/mp4'];
     $type  = $types[strtolower(pathinfo($file, PATHINFO_EXTENSION))] ?? 'application/octet-stream';
+
+    // ?download asks the browser to save it rather than play it. Ranges still work, so an
+    // interrupted download of a several-gigabyte recording can be resumed.
+    if (isset($_GET['download'])) {
+        $name = str_replace(['"', "\r", "\n"], '', basename($file));
+        header('Content-Disposition: attachment; filename="' . $name . '"');
+    }
 
     sendFile($file, $type);
 

@@ -286,6 +286,10 @@ class RecordingStore
             'convertedBytes' => 'converted_bytes',
             'convertPid'     => 'convert_pid',
             'convertError'   => 'convert_error',
+            // Set by hand from the page, to convert a recording that was kept as broadcast.
+            'convertRequested' => 'convert_requested',
+            // Null keeps whatever was broadcast; a number scales to that many lines.
+            'convertHeight' => 'convert_height',
         ];
 
         $assignments = [];
@@ -358,7 +362,7 @@ class RecordingStore
     {
         $statement = $this->db->prepare(
             'SELECT * FROM recordings
-              WHERE format = ?
+              WHERE (format = ? OR convert_requested = 1)
                 AND status = ?
                 AND converted_path IS NULL
                 AND convert_error IS NULL
@@ -609,12 +613,14 @@ class RecordingStore
             'retry_after' => 'INTEGER',
         ]);
         $this->addMissingColumns('recordings', [
-            'reservation'     => 'TEXT',
-            'stop_requested'  => 'TEXT',
-            'converted_path'  => 'TEXT',
-            'converted_bytes' => 'INTEGER',
-            'convert_pid'     => 'INTEGER',
-            'convert_error'   => 'TEXT',
+            'convert_requested' => 'INTEGER NOT NULL DEFAULT 0',
+            'convert_height'    => 'INTEGER',
+            'reservation'       => 'TEXT',
+            'stop_requested'    => 'TEXT',
+            'converted_path'    => 'TEXT',
+            'converted_bytes'   => 'INTEGER',
+            'convert_pid'       => 'INTEGER',
+            'convert_error'     => 'TEXT',
         ]);
     }
 
@@ -670,32 +676,34 @@ class RecordingStore
     private static function castRecording(array $row): array
     {
         return [
-            'id'             => (int) $row['id'],
-            'scheduleId'     => $row['schedule_id'] === null ? null : (int) $row['schedule_id'],
-            'device'         => $row['device'],
-            'physical'       => (int) $row['physical'],
-            'program'        => (int) $row['program'],
-            'virtual'        => $row['virtual'],
-            'channelName'    => $row['channel_name'],
-            'title'          => $row['title'],
-            'description'    => $row['description'],
-            'path'           => $row['path'],
-            'format'         => $row['format'],
-            'tuner'          => $row['tuner'] === null ? null : (int) $row['tuner'],
-            'pid'            => $row['pid'] === null ? null : (int) $row['pid'],
-            'startedAt'      => (int) $row['started_at'],
-            'stopsAt'        => (int) $row['stops_at'],
-            'endedAt'        => $row['ended_at'] === null ? null : (int) $row['ended_at'],
-            'bytes'          => (int) $row['bytes'],
-            'status'         => $row['status'],
-            'error'          => $row['error'],
-            'reservation'    => $row['reservation'],
-            'stopRequested'  => $row['stop_requested'],
-            'convertedPath'  => $row['converted_path'] ?? null,
-            'convertedBytes' => ($row['converted_bytes'] ?? null) === null ? null : (int) $row['converted_bytes'],
-            'convertPid'     => ($row['convert_pid'] ?? null) === null ? null : (int) $row['convert_pid'],
-            'convertError'   => $row['convert_error'] ?? null,
-            'updatedAt'      => (int) $row['updated_at'],
+            'id'               => (int) $row['id'],
+            'scheduleId'       => $row['schedule_id'] === null ? null : (int) $row['schedule_id'],
+            'device'           => $row['device'],
+            'physical'         => (int) $row['physical'],
+            'program'          => (int) $row['program'],
+            'virtual'          => $row['virtual'],
+            'channelName'      => $row['channel_name'],
+            'title'            => $row['title'],
+            'description'      => $row['description'],
+            'path'             => $row['path'],
+            'format'           => $row['format'],
+            'tuner'            => $row['tuner'] === null ? null : (int) $row['tuner'],
+            'pid'              => $row['pid'] === null ? null : (int) $row['pid'],
+            'startedAt'        => (int) $row['started_at'],
+            'stopsAt'          => (int) $row['stops_at'],
+            'endedAt'          => $row['ended_at'] === null ? null : (int) $row['ended_at'],
+            'bytes'            => (int) $row['bytes'],
+            'status'           => $row['status'],
+            'error'            => $row['error'],
+            'reservation'      => $row['reservation'],
+            'stopRequested'    => $row['stop_requested'],
+            'convertedPath'    => $row['converted_path'] ?? null,
+            'convertedBytes'   => ($row['converted_bytes'] ?? null) === null ? null : (int) $row['converted_bytes'],
+            'convertPid'       => ($row['convert_pid'] ?? null) === null ? null : (int) $row['convert_pid'],
+            'convertError'     => $row['convert_error'] ?? null,
+            'convertRequested' => (int) ($row['convert_requested'] ?? 0) === 1,
+            'convertHeight'    => ($row['convert_height'] ?? null) === null ? null : (int) $row['convert_height'],
+            'updatedAt'        => (int) $row['updated_at'],
         ];
     }
 }

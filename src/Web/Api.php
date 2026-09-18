@@ -801,7 +801,7 @@ class Api
                 'formats'       => RecordingStore::FORMATS,
                 'defaultFormat' => self::environmentValue('RECORDING_FORMAT', 'ts'),
                 'schedules'     => $store->getSchedules($device),
-                'recordings'    => $store->getRecordings($device),
+                'recordings'    => self::withHdFlags($store->getRecordings($device), $this->guide),
                 // Standing rules ride along with the list the page already polls.
                 'rules' => $store->getRules($device),
             ];
@@ -836,6 +836,12 @@ class Api
             return $this->stopRecording((int) $match[1]);
         }
 
+        if (preg_match('#^/api/recordings/(\d+)/convert$#', $path, $match)) {
+            self::requireMethod($method, 'POST');
+
+            return $this->convertRecording((int) $match[1], self::jsonBody($request));
+        }
+
         if (preg_match('#^/api/recordings/(\d+)/play$#', $path, $match)) {
             return $this->routePlayback($method, (int) $match[1], $request);
         }
@@ -847,6 +853,82 @@ class Api
         self::requireMethod($method, 'DELETE');
 
         return $this->deleteRecording((int) $match[1]);
+    }
+
+    /**
+     * Say which recordings came from a channel the guide knows to be high definition.
+     *
+     * A recording keeps the channel it came from but not what that channel was, and the
+     * lineup is where that is written down.
+     *
+     * @param list<array<string, mixed>> $recordings
+     * @return list<array<string, mixed>>
+     */
+    private static function withHdFlags(array $recordings, ?GuideStore $guide): array
+    {
+        if ($guide === null || $recordings === []) {
+            return $recordings;
+        }
+
+        $hd = [];
+
+        foreach ($guide->getLineup() as $channel) {
+            $hd[$channel['device'] . ' ' . $channel['virtual']] = (bool) ($channel['hd'] ?? false);
+        }
+
+        return array_map(static function (array $recording) use ($hd): array {
+            $recording['hd'] = $hd[$recording['device'] . ' ' . $recording['virtual']] ?? false;
+
+            return $recording;
+        }, $recordings);
+    }
+
+    /**
+     * Ask for a recording kept as broadcast to be converted for browsers.
+     *
+     * The recorder picks it up on its next pass; nothing is deleted, so the broadcast stays
+     * until it is removed by hand. Without a height the picture is left as it was sent.
+     *
+     * @param array<string, mixed> $body
+     * @return array<string, mixed>
+     */
+    private function convertRecording(int $id, array $body): array
+    {
+        $store     = $this->recordingStore();
+        $recording = $store->getRecording($id);
+
+        if ($recording === null) {
+            throw new ApiException('No such recording', 404);
+        }
+
+        if ($recording['status'] !== RecordingStore::STATUS_DONE) {
+            throw new ApiException('That recording has not finished yet', 409);
+        }
+
+        if ($recording['format'] === 'mp4' || $recording['convertedPath'] !== null) {
+            throw new ApiException('That recording already plays in a browser', 409);
+        }
+
+        // Already under way: asking again is not an error, it just says so.
+        if ($recording['convertPid'] !== null) {
+            return ['queued' => true, 'recording' => $recording];
+        }
+
+        $height = $body['height'] ?? null;
+
+        if ($height !== null && (!is_int($height) || $height < 144 || $height > 2160)) {
+            throw new ApiException('Expected "height" to be between 144 and 2160, or nothing to keep the broadcast\'s', 400);
+        }
+
+        // A conversion that failed before is excluded by its error, so clear it or asking
+        // again would quietly do nothing.
+        $store->updateRecording($id, [
+            'convertRequested' => 1,
+            'convertHeight'    => $height,
+            'convertError'     => null,
+        ]);
+
+        return ['queued' => true, 'recording' => $store->getRecording($id)];
     }
 
     /**
