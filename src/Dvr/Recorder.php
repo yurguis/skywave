@@ -585,7 +585,10 @@ class Recorder
             '-vf', 'estdif=mode=frame:deint=interlaced,' . $scale,
             '-fps_mode', 'passthrough',
             '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-crf', '21',
-            '-c:a', 'aac', '-ac', '2',
+            // No downmix: a 5.1 track stays 5.1, whatever language it is in. Browsers
+            // play multi-channel AAC from an mp4, and a copy kept for the long term
+            // should not quietly lose the surround the broadcast sent.
+            '-c:a', 'aac',
             // Put the index at the front so a browser can start without the whole file.
             '-movflags', '+faststart',
             '-f', 'mp4',
@@ -683,7 +686,9 @@ class Recorder
                 '-vf', sprintf('estdif=mode=frame:deint=interlaced,scale=w=-2:h=trunc(min(%d\,ih)/2)*2', $this->height),
                 '-fps_mode', 'passthrough',
                 '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-crf', '21',
-                '-c:a', 'aac', '-ac', '2',
+                // Whatever layout each track was broadcast with, in any language: a
+                // recording kept on disk should not lose surround the air carried.
+                '-c:a', 'aac',
                 '-movflags', '+faststart',
                 '-t', (string) $seconds,
                 '-y', $file,
