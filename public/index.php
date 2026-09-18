@@ -24,6 +24,7 @@ use Skywave\Dvr\TunerReservations;
 use Skywave\Guide\ChannelLogos;
 use Skywave\Guide\GuideJobs;
 use Skywave\Guide\GuideStore;
+use Skywave\Guide\ProgrammeArtwork;
 use Skywave\Hdhomerun\Discovery;
 use Skywave\Web\Api;
 use Skywave\Web\LiveStreams;
@@ -66,6 +67,23 @@ if (str_starts_with($path, '/hls/')) {
     header('Content-Type: ' . ($isPlaylist ? 'application/vnd.apple.mpegurl' : 'video/mp2t'));
     header('Cache-Control: ' . ($isPlaylist ? 'no-cache' : 'max-age=60'));
     echo $data;
+
+    return;
+}
+
+// Programme pictures, fetched once and served from here. A query rather than a path: a
+// title can contain anything, including slashes, and none of it should become a path.
+if ($path === '/artwork') {
+    $file = ProgrammeArtwork::fromEnvironment()->pathFor((string) ($_GET['title'] ?? ''));
+
+    if ($file === null) {
+        http_response_code(404);
+
+        return;
+    }
+
+    header('Cache-Control: public, max-age=86400');
+    sendFile($file, 'image/jpeg');
 
     return;
 }

@@ -142,7 +142,28 @@ function formatDuration(seconds) {
  * A station's logo, fetched once by the server. Channels without one just show their
  * name, which is why the image removes itself instead of leaving a broken picture.
  */
-function channelLogo(virtual) {
+function programmeArtwork(title, exists) {
+  // The server says whether there is one. Asking anyway meant five hundred 404s a
+  // sitting, since most of what a broadcast lists has no picture anywhere.
+  if (!title || !exists) return null;
+
+  const art = h('img', {
+    class: 'programme-art',
+    src: `/artwork?title=${encodeURIComponent(title)}`,
+    alt: '',
+    loading: 'lazy',
+  });
+
+  art.addEventListener('error', () => art.remove());
+
+  return art;
+}
+
+function channelLogo(virtual, exists = true) {
+  // Six channels here have no logo and never will; without this they were asked for
+  // hundreds of times a day, every one a 404.
+  if (!exists) return null;
+
   const logo = h('img', {
     class: 'channel-logo',
     src: `/logos/${encodeURIComponent(virtual)}.png`,
@@ -1798,7 +1819,7 @@ function createGuideView(device, player) {
       h('div', { class: 'guide-row guide-header' }, h('div', { class: 'guide-channel' }), h('div', { class: 'guide-track' }, ticks, nowMarker())),
       ...channels.map((channel) => h('div', { class: 'guide-row' },
         h('div', { class: 'guide-channel', title: `${channel.virtual} ${channel.name}` },
-          channelLogo(channel.virtual),
+          channelLogo(channel.virtual, channel.logo),
           h('span', { class: 'guide-channel-name' },
             h('b', {}, channel.virtual), ' ', channel.name,
             channel.hd && h('span', { class: 'badge hd' }, 'HD')),
@@ -1848,7 +1869,7 @@ function createGuideView(device, player) {
     // quietly drops it: the progress line below is only there while it is recording.
     details.replaceChildren(...[
       h('div', { class: 'guide-details-head' },
-        channelLogo(channel.virtual),
+        channelLogo(channel.virtual, channel.logo),
         h('h3', {}, event.title),
         event.rating && h('span', { class: 'badge' }, event.rating),
         h('button', { type: 'button', class: 'secondary', 'aria-label': 'Close details', onclick: () => details.close() }, '×'),
@@ -1857,7 +1878,12 @@ function createGuideView(device, player) {
         `${channel.virtual} ${channel.name} · ${dayFormat.format(start)}, ${timeFormat.format(start)}–${timeFormat.format(end)} · ${formatDuration(event.duration)} `,
         channel.hd && h('span', { class: 'badge hd' }, 'HD'),
         onNow && h('span', { class: 'badge locked' }, 'on now')),
-      event.description ? h('p', {}, event.description) : h('p', { class: 'muted' }, 'No description.'),
+      // The picture and what the programme is about, side by side. h() drops a falsy
+      // child, so with no picture the description simply has the row to itself.
+      h('div', { class: 'programme-detail' },
+        programmeArtwork(event.title, event.art),
+        event.description ? h('p', {}, event.description) : h('p', { class: 'muted' }, 'No description.'),
+      ),
       h('div', { class: 'controls' },
         h('button', {
           type: 'button',
