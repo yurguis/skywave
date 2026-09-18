@@ -14,8 +14,10 @@ use Skywave\Dvr\RecordingPlayback;
 use Skywave\Dvr\RecordingStore;
 use Skywave\Dvr\SeriesRules;
 use Skywave\Dvr\TunerReservations;
+use Skywave\Guide\ChannelLogos;
 use Skywave\Guide\GuideJobs;
 use Skywave\Guide\GuideStore;
+use Skywave\Guide\ProgrammeArtwork;
 use Skywave\Hdhomerun\ChannelMap;
 use Skywave\Hdhomerun\ControlClient;
 use Skywave\Hdhomerun\Device;
@@ -511,9 +513,11 @@ class Api
             'to'        => $to,
             'now'       => time(),
             'dataRange' => $store->getDataRange($device),
-            'channels'  => $store->getGuide($from, $to, $device),
-            'running'   => $this->guideJobs !== null && $this->guideJobs->isRunning($device),
-            'runs'      => $store->getRecentRuns(5, $device),
+            // Which pictures exist is the server's business: a page that guesses asks for
+            // six logos and five hundred posters that are not there, over and over.
+            'channels' => self::withPictures($store->getGuide($from, $to, $device)),
+            'running'  => $this->guideJobs !== null && $this->guideJobs->isRunning($device),
+            'runs'     => $store->getRecentRuns(5, $device),
         ];
     }
 
@@ -853,6 +857,30 @@ class Api
         self::requireMethod($method, 'DELETE');
 
         return $this->deleteRecording((int) $match[1]);
+    }
+
+    /**
+     * Mark what actually has a picture, so the page never asks for one that does not exist.
+     *
+     * @param list<array<string, mixed>> $channels
+     * @return list<array<string, mixed>>
+     */
+    private static function withPictures(array $channels): array
+    {
+        $logos   = ChannelLogos::fromEnvironment();
+        $artwork = ProgrammeArtwork::fromEnvironment();
+
+        return array_map(static function (array $channel) use ($logos, $artwork): array {
+            $channel['logo'] = $logos->pathFor((string) $channel['virtual']) !== null;
+
+            $channel['events'] = array_map(static function (array $event) use ($artwork): array {
+                $event['art'] = $artwork->pathFor((string) ($event['title'] ?? '')) !== null;
+
+                return $event;
+            }, $channel['events'] ?? []);
+
+            return $channel;
+        }, $channels);
     }
 
     /**

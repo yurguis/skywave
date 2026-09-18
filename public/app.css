@@ -614,7 +614,15 @@ details > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 
 /* A programme's own picture, where there is one: larger than a station logo, since it is
    the thing being described rather than a mark beside it. */
-.programme-art { height: 54px; width: auto; border-radius: 4px; object-fit: cover; }
+.programme-art {
+  display: block;
+  height: 132px;
+  width: auto;
+  max-width: 100%;
+  margin: 4px 0 10px;
+  border-radius: 6px;
+  object-fit: cover;
+}
 
 .channel-logo { width: 34px; height: 26px; object-fit: contain; flex: none; }
 .guide-channel-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

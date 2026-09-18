@@ -26,8 +26,12 @@ class ProgrammeArtwork
 
     private const IMAGE_HOST = 'static.tvmaze.com';
 
-    /** Their images run to about 20 KB; this is room to spare, not an expectation. */
-    private const MAXIMUM_BYTES = 1048576;
+    /**
+     * A poster at the size the page shows runs to a few hundred KB. Anything reaching this
+     * is refused rather than written: a picture cut off at the limit still passes a header
+     * check and then draws as half an image.
+     */
+    private const MAXIMUM_BYTES = 2097152;
 
     /** TVmaze asks for about twenty calls per ten seconds. This is well inside that. */
     private const PAUSE_MICROSECONDS = 600000;
@@ -175,16 +179,20 @@ class ProgrammeArtwork
             return null;
         }
 
-        $url = (string) ($show['image']['original'] ?? $show['image']['medium'] ?? '');
+        // The medium is the size this page draws; the original is a print-resolution
+        // poster, several megabytes of detail nobody sees.
+        $url = (string) ($show['image']['medium'] ?? $show['image']['original'] ?? '');
 
         return self::isAllowed($url) ? $url : null;
     }
 
     private function download(string $url): ?string
     {
-        $image = @file_get_contents($url, false, $this->context(), 0, self::MAXIMUM_BYTES);
+        // One byte past the limit, so a picture that fills it exactly is known to have been
+        // cut off rather than mistaken for a complete one.
+        $image = @file_get_contents($url, false, $this->context(), 0, self::MAXIMUM_BYTES + 1);
 
-        if ($image === false || $image === '') {
+        if ($image === false || $image === '' || strlen($image) > self::MAXIMUM_BYTES) {
             return null;
         }
 
