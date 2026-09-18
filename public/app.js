@@ -1878,10 +1878,12 @@ function createGuideView(device, player) {
         `${channel.virtual} ${channel.name} · ${dayFormat.format(start)}, ${timeFormat.format(start)}–${timeFormat.format(end)} · ${formatDuration(event.duration)} `,
         channel.hd && h('span', { class: 'badge hd' }, 'HD'),
         onNow && h('span', { class: 'badge locked' }, 'on now')),
-      // Below what is on and before what it is about. The picture removes itself when
-      // there is none, so nothing is left behind for programmes nobody has heard of.
-      programmeArtwork(event.title, event.art),
-      event.description ? h('p', {}, event.description) : h('p', { class: 'muted' }, 'No description.'),
+      // The picture and what the programme is about, side by side. h() drops a falsy
+      // child, so with no picture the description simply has the row to itself.
+      h('div', { class: 'programme-detail' },
+        programmeArtwork(event.title, event.art),
+        event.description ? h('p', {}, event.description) : h('p', { class: 'muted' }, 'No description.'),
+      ),
       h('div', { class: 'controls' },
         h('button', {
           type: 'button',

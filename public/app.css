@@ -614,14 +614,28 @@ details > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 
 /* A programme's own picture, where there is one: larger than a station logo, since it is
    the thing being described rather than a mark beside it. */
+/* The picture and the description share a row; the text wraps beside the poster rather
+   than starting below it. On a phone there is no room for two columns, so they stack. */
+.programme-detail {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin: 4px 0 10px;
+}
+
+.programme-detail p { margin: 0; }
+
 .programme-art {
   display: block;
   height: 132px;
   width: auto;
-  max-width: 100%;
-  margin: 4px 0 10px;
+  flex: none;
   border-radius: 6px;
   object-fit: cover;
+}
+
+@media (max-width: 520px) {
+  .programme-detail { flex-direction: column; gap: 10px; }
 }
 
 .channel-logo { width: 34px; height: 26px; object-fit: contain; flex: none; }
