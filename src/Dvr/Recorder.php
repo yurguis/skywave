@@ -126,6 +126,12 @@ class Recorder
         $files = [];
 
         foreach (array_filter([$recording['path'] ?? null, $recording['convertedPath'] ?? null]) as $path) {
+            $captions = self::captionsPath("$this->directory/$path");
+
+            if (is_file($captions)) {
+                $files[] = $captions;
+            }
+
             foreach (['', '.log', '.part', '.part.log'] as $suffix) {
                 $file = "$this->directory/$path$suffix";
 
@@ -482,7 +488,13 @@ class Recorder
         try {
             $this->guardDirectory();
             $partial = "$this->directory/" . self::convertedPath($recording) . '.part';
-            $pid     = DetachedProcess::start($this->conversionArguments($source, $partial), "$partial.log");
+            // Asked for by hand, the page says what to do with the picture: null keeps
+            // whatever was broadcast. "both" still follows RECORDING_HEIGHT, which is a
+            // choice made once for every recording rather than one at a time.
+            $height = ($recording['convertRequested'] ?? false)
+                ? ($recording['convertHeight'] ?? null)
+                : $this->height;
+            $pid = DetachedProcess::start($this->conversionArguments($source, $partial, $height), "$partial.log");
         } catch (RuntimeException $e) {
             $this->store->updateRecording($recording['id'], ['convertError' => $e->getMessage()]);
             ($this->log)("Cannot convert {$recording['title']}: {$e->getMessage()}");
@@ -522,6 +534,15 @@ class Recorder
         rename($partial, "$this->directory/$path");
         @unlink("$partial.log");
 
+        // The captions were written next to the half-finished file; move them with it.
+        $captions = self::captionsPath($partial);
+
+        if (is_file($captions) && filesize($captions) > 0) {
+            rename($captions, self::captionsPath("$this->directory/$path"));
+        } else {
+            @unlink($captions);
+        }
+
         $this->store->updateRecording($recording['id'], [
             'convertPid'     => null,
             'convertedPath'  => $path,
@@ -533,22 +554,58 @@ class Recorder
     /**
      * @return string[]
      */
-    private function conversionArguments(string $source, string $file): array
+    /**
+     * @param int|null $height picture height to convert to, or null to keep the source's
+     */
+    private function conversionArguments(string $source, string $file, ?int $height = null): array
     {
+        // Deinterlacing a frame at a time keeps the broadcast's timing, and with it the
+        // captions. The scale only rounds the picture to even numbers, which yuv420p needs.
+        $scale = $height === null
+            ? 'scale=w=trunc(iw/2)*2:h=trunc(ih/2)*2'
+            : sprintf('scale=w=-2:h=trunc(min(%d\,ih)/2)*2', $height);
+
+        // A second reading of the same file, with the broadcast's captions exposed as a
+        // subtitle stream. They survive into the mp4's video as they always did, but a
+        // browser will not show captions carried inside a plain file the way it does in a
+        // playlist, so they are written out beside it as well.
+        //
+        // No escaping: sanitize() allows only letters, digits, space, dot, dash and
+        // underscore into a name, none of which mean anything to a filtergraph.
+        $captions = 'movie=' . $source . '[out0+subcc]';
+
         return [
             $this->ffmpeg, '-hide_banner', '-nostdin', '-loglevel', 'error',
             '-fflags', '+genpts+discardcorrupt',
             '-i', $source,
-            '-map', '0:v:0', '-map', '0:a:0',
-            '-vf', sprintf('estdif=mode=frame:deint=interlaced,scale=w=-2:h=trunc(min(%d\,ih)/2)*2', $this->height),
+            '-f', 'lavfi', '-i', $captions,
+            // Every audio track, not just the first: this broadcast carries Spanish,
+            // Portuguese and English 5.1, and mapping one silently threw two away.
+            '-map', '0:v:0', '-map', '0:a',
+            '-vf', 'estdif=mode=frame:deint=interlaced,' . $scale,
             '-fps_mode', 'passthrough',
             '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-crf', '21',
-            '-c:a', 'aac', '-ac', '2',
+            // No downmix: a 5.1 track stays 5.1, whatever language it is in. Browsers
+            // play multi-channel AAC from an mp4, and a copy kept for the long term
+            // should not quietly lose the surround the broadcast sent.
+            '-c:a', 'aac',
             // Put the index at the front so a browser can start without the whole file.
             '-movflags', '+faststart',
             '-f', 'mp4',
             '-y', $file,
+            // Optional: a programme with no captions must still convert.
+            '-map', '1:s:0?',
+            '-f', 'webvtt',
+            '-y', self::captionsPath($file),
         ];
+    }
+
+    /**
+     * Where a converted recording's captions live: beside it, same name, .vtt.
+     */
+    public static function captionsPath(string $file): string
+    {
+        return preg_replace('/\.mp4(\.part)?$/', '', $file) . '.vtt';
     }
 
     private function isPlayable(string $file): bool
@@ -629,7 +686,9 @@ class Recorder
                 '-vf', sprintf('estdif=mode=frame:deint=interlaced,scale=w=-2:h=trunc(min(%d\,ih)/2)*2', $this->height),
                 '-fps_mode', 'passthrough',
                 '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-crf', '21',
-                '-c:a', 'aac', '-ac', '2',
+                // Whatever layout each track was broadcast with, in any language: a
+                // recording kept on disk should not lose surround the air carried.
+                '-c:a', 'aac',
                 '-movflags', '+faststart',
                 '-t', (string) $seconds,
                 '-y', $file,

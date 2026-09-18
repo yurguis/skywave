@@ -184,6 +184,17 @@ program ends, so no tuner time is spent on conversion and the original is kept. 
 made in the background (about 20 times faster than playback) and used for playback when it
 is ready; until then the recording plays like any other `ts`.
 
+**Download** saves a recording to whatever machine you are on, resuming rather than starting
+again if the connection drops. It gives you the browser-ready copy when there is one and the
+broadcast otherwise.
+
+**Convert** makes a browser-ready copy of a recording kept as broadcast, which is worth doing
+for the room it saves. Measured on a 1080i broadcast here: an hour takes about 2.8 GB as
+sent, 1.5 GB converted at the same picture size, and 0.6 GB converted to 720p. The recorder
+does it in the background, about four times faster than watching it, and checks the result
+plays before keeping it. Nothing is deleted either way: the broadcast stays until you remove
+it yourself.
+
 **Play** in the Recordings tab plays one back in the same player, with a seek bar over the
 whole recording. An `mp4` plays straight from the file. A `ts` recording holds MPEG-2 video
 and AC-3 audio, which no browser decodes, so the server converts it to HLS while you watch:

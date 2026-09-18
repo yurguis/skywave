@@ -1429,7 +1429,7 @@ function createPlayer(panel) {
    * Watch a recording. An mp4 plays as it is; a ts recording is converted on the server,
    * and playback starts as soon as the first segments are ready.
    */
-  async function playFile({ recordingId, kind, playlist, url, title, subtitle, virtual }) {
+  async function playFile({ recordingId, kind, playlist, url, captions, title, subtitle, virtual }) {
     await stop();
 
     vod = { recordingId, kind };
@@ -1448,7 +1448,13 @@ function createPlayer(panel) {
     panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
     if (kind === 'file') {
-      attach(url);
+      attach(url, 'file');
+
+      // A browser reads captions out of a playlist by itself, but not out of a plain file:
+      // the converter writes them alongside, and they go on as a track.
+      if (captions) {
+        video.append(h('track', { kind: 'captions', src: captions, srclang: 'en', label: 'Captions', default: '' }));
+      }
 
       return;
     }
@@ -1499,8 +1505,23 @@ function createPlayer(panel) {
     timer = setTimeout(pollRecording, hls || video.getAttribute('src') ? 10000 : 1000);
   }
 
-  function attach(playlist) {
+  function attach(source, kind = 'hls') {
     setStatus('Buffering…');
+
+    if (kind === 'file') {
+      // An mp4 the browser decodes itself. hls.js would attach a MediaSource and try to
+      // read the file as a playlist, which fails silently: no media, no error, no end to
+      // the spinner. Quality and audio menus belong to hls.js, so they stay hidden.
+      video.src = source;
+      qualityButton.hidden = true;
+      audioButton.hidden = true;
+      video.play().catch(() => { /* autoplay blocked; the controls still work */ });
+
+      clearInterval(liveTimer);
+      liveTimer = setInterval(updateLiveState, 1000);
+
+      return;
+    }
 
     if (window.Hls && Hls.isSupported()) {
       hls = new Hls({
@@ -1541,10 +1562,10 @@ function createPlayer(panel) {
         else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
         else setStatus(`Player error: ${data.details}`, true);
       });
-      hls.loadSource(playlist);
+      hls.loadSource(source);
       hls.attachMedia(video);
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = playlist;
+      video.src = source;
     } else {
       setStatus('This browser cannot play HLS video', true);
       return;
@@ -1570,6 +1591,11 @@ function createPlayer(panel) {
     audioSources = [];
     audioButton.hidden = true;
     closeAudioMenu();
+    // A track left behind would follow the next recording onto the screen.
+    for (const track of [...video.querySelectorAll('track')]) {
+      track.remove();
+    }
+
     if (video.getAttribute('src')) {
       video.removeAttribute('src');
       video.load();
@@ -2164,7 +2190,7 @@ function createRecordingsView(device, player) {
       ? [h('p', { class: 'muted' }, 'Nothing recorded yet.')]
       : data.recordings.map((recording) => row({
         when: recording.startedAt,
-        title: recording.title,
+        title: [recording.title, ...recordingBadges(recording)],
         subtitle: `${recording.virtual} ${recording.channelName} · ${formatBytes(recording.bytes)}${describeCopy(recording)}`,
         progress: recording.status === 'recording' ? progressFor(recording) : null,
         error: recording.error,
@@ -2182,6 +2208,14 @@ function createRecordingsView(device, player) {
               class: 'watch',
               onclick: (clickEvent) => playRecording(recording, clickEvent.currentTarget),
             }, '▶ Play'),
+            recording.bytes > 0 && h('button', {
+              type: 'button',
+              class: 'secondary',
+              title: 'Save it to this device',
+              // Content-Disposition makes the browser save it, so the page stays put.
+              onclick: () => { window.location.href = `/recordings/${recording.id}/file?download=1`; },
+            }, '⤓ Download'),
+            convertControl(recording),
             h('button', {
               type: 'button',
               class: 'secondary',
@@ -2189,6 +2223,79 @@ function createRecordingsView(device, player) {
             }, 'Delete'),
           ],
       }))));
+  }
+
+  /**
+   * Offer to convert a recording kept as broadcast. An hour of it takes about 2.8 GB;
+   * converted it is roughly 1.5 GB at the same picture size, or 0.6 GB at 720p. Nothing is
+   * deleted: the broadcast stays until it is removed by hand.
+   */
+  function convertControl(recording) {
+    if (recording.format === 'mp4' || recording.convertedPath) return null;
+
+    if (recording.convertPid) {
+      return h('span', { class: 'muted' }, 'Converting…');
+    }
+
+    if (recording.convertError) {
+      return h('span', { class: 'record-choice' },
+        h('span', { class: 'muted', title: recording.convertError }, 'Conversion failed'),
+        h('button', {
+          type: 'button',
+          class: 'secondary',
+          onclick: (clickEvent) => convert(recording, null, clickEvent.currentTarget),
+        }, 'Try again'),
+      );
+    }
+
+    if (recording.convertRequested) {
+      return h('span', { class: 'muted' }, 'Queued to convert');
+    }
+
+    // Choosing is the action: one control rather than a menu and a button beside it.
+    const choice = h('select', {
+      class: 'record-format',
+      'aria-label': 'Convert this recording',
+      title: 'Make a smaller copy that browsers can play',
+      onchange: () => convert(recording, choice.value === '720' ? 720 : null, choice),
+    },
+      h('option', { value: '' }, 'Convert…'),
+      h('option', { value: 'original' }, 'Original size'),
+      h('option', { value: '720' }, '720p'),
+    );
+
+    return choice;
+  }
+
+  async function convert(recording, height, control) {
+    if (control.value === '') return;
+
+    control.disabled = true;
+
+    try {
+      await api(`/api/recordings/${recording.id}/convert`, {
+        method: 'POST',
+        body: JSON.stringify(height === null ? {} : { height }),
+      });
+      await load();
+    } catch (error) {
+      showError(error);
+      control.disabled = false;
+      control.value = '';
+    }
+  }
+
+  /**
+   * What a recording is, at a glance: the picture it came from and what can play it.
+   */
+  function recordingBadges(recording) {
+    const badges = [];
+
+    if (recording.hd) badges.push(h('span', { class: 'badge hd tag-hd' }, 'HD'));
+    if (recording.format !== 'mp4') badges.push(h('span', { class: 'badge hd tag-ts' }, 'TS'));
+    if (recording.format === 'mp4' || recording.convertedPath) badges.push(h('span', { class: 'badge hd tag-mp4' }, 'MP4'));
+
+    return badges;
   }
 
   function clockOf(minutes) {
@@ -2211,7 +2318,9 @@ function createRecordingsView(device, player) {
         error && h('span', { class: 'muted' }, error),
       ),
       h('span', { class: 'actions' },
-        h('span', { class: `badge${status === 'recording' ? ' locked' : ''}` }, status),
+        // Only while something is happening: a finished recording says so by offering to
+        // play, download or delete it.
+        status && status !== 'done' ? h('span', { class: `badge${status === 'recording' ? ' locked' : ''}` }, status) : null,
         ...actions,
       ),
     );

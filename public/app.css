@@ -8,6 +8,7 @@
   --accent: #2563eb;
   --accent-text: #ffffff;
   --green: #16a34a;
+  --amber: #b45309;
   --yellow: #ca8a04;
   --red: #dc2626;
   --neutral: #94a3b8;
@@ -25,6 +26,7 @@
     --muted: #8b95a3;
     --accent: #4f8cff;
     --green: #22c55e;
+    --amber: #f59e0b;
     --yellow: #eab308;
     --red: #f87171;
     --neutral: #64748b;
@@ -613,6 +615,12 @@ details > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 .channel-logo { width: 34px; height: 26px; object-fit: contain; flex: none; }
 .guide-channel-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .badge.hd { margin-left: 6px; padding: 0 5px; font-size: 10px; letter-spacing: .04em; }
+
+/* What a recording is, at a glance. Tinted the same way the tuner badges are, so the list
+   reads as colour rather than as another row of grey pills. */
+.badge.tag-hd { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.badge.tag-ts { background: color-mix(in srgb, var(--amber) 20%, transparent); color: var(--amber); }
+.badge.tag-mp4 { background: color-mix(in srgb, var(--green) 18%, transparent); color: var(--green); }
 
 .guide-track { position: relative; height: 54px; }
 .guide-header .guide-track { height: 30px; }

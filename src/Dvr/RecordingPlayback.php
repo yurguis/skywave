@@ -175,6 +175,26 @@ class RecordingPlayback
     /**
      * The recording's own file, for serving an mp4 or downloading the original.
      */
+    /**
+     * The captions written beside a converted recording, when there are any.
+     *
+     * A browser shows captions carried inside a playlist but not inside a plain file, so a
+     * converted recording keeps them in a WebVTT file the player attaches as a track.
+     */
+    public function captionsFile(int $recordingId): ?string
+    {
+        $file = $this->sourceFile($recordingId);
+
+        if ($file === null || !str_ends_with($file, '.mp4')) {
+            return null;
+        }
+
+        $captions = Recorder::captionsPath($file);
+
+        // ffmpeg writes a WebVTT header even for a programme with no captions in it.
+        return is_file($captions) && filesize($captions) > 0 ? $captions : null;
+    }
+
     public function sourceFile(int $recordingId): ?string
     {
         $recording = $this->store->getRecording($recordingId);
@@ -414,11 +434,15 @@ class RecordingPlayback
             'virtual'     => $recording['virtual'],
             'subtitle'    => trim("{$recording['virtual']} {$recording['channelName']}"),
             'url'         => "/recordings/{$recording['id']}/file",
-            'converting'  => false,
-            'ready'       => true,
-            'segments'    => 0,
-            'viewers'     => 1,
-            'error'       => null,
+            // Only when the conversion actually found captions to write.
+            'captions' => $this->captionsFile($recording['id']) === null
+                ? null
+                : "/recordings/{$recording['id']}/captions.vtt",
+            'converting' => false,
+            'ready'      => true,
+            'segments'   => 0,
+            'viewers'    => 1,
+            'error'      => null,
         ];
     }
 
