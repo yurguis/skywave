@@ -152,6 +152,22 @@ where the broadcast calls it WFOR-TV.
 The guide itself stays local, read from the broadcast, so nothing about watching, the
 guide or recording depends on an internet connection.
 
+### Programme pictures
+
+A broadcast names what is on but never pictures it, the same gap the station logos fill.
+Pictures come from [TVmaze](https://www.tvmaze.com), which needs no account and no key, and
+are fetched during a guide update rather than when a page loads, so nobody waits on someone
+else's service.
+
+They are matched on the title exactly, because a title is all the air carries. Nothing
+fuzzy: showing the wrong programme's picture would be worse than showing none, and a good
+half of what a broadcast lists is "Paid Programming" or a channel's own name. Titles TVmaze
+does not know are remembered as misses for a month, so a channel running the same filler two
+dozen times a day is looked up once rather than two dozen times.
+
+Pictures are written beside the guide database and served from there. With no internet,
+nothing is fetched and everything else works exactly as before.
+
 ### Recordings
 
 Click a program in the Guide and choose **Record** to schedule that showing; the

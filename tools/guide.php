@@ -26,6 +26,7 @@ use Skywave\Guide\ChannelLogos;
 use Skywave\Guide\GuideCollector;
 use Skywave\Guide\GuideJobs;
 use Skywave\Guide\GuideStore;
+use Skywave\Guide\ProgrammeArtwork;
 use Skywave\Hdhomerun\Device;
 use Skywave\Hdhomerun\Discovery;
 use Skywave\Hdhomerun\Exception\HdhomerunException;
@@ -126,6 +127,14 @@ switch ($positional[0] ?? '') {
                     }
 
                     $collector->collect($device, $map);
+
+                    // Pictures for whatever is now in the guide. Fetched here rather than
+                    // when a page loads, so nobody waits on someone else's service.
+                    $art = ProgrammeArtwork::fromEnvironment()->refresh($store->eventTitles($host), $store);
+
+                    if ($art['fetched'] > 0 || $art['missing'] > 0) {
+                        $log("Artwork: {$art['fetched']} fetched, {$art['missing']} not found, {$art['skipped']} already known");
+                    }
 
                     // Whatever has just come into view and matches a rule is scheduled now.
                     $rules = $series->evaluate($host);

@@ -142,6 +142,21 @@ function formatDuration(seconds) {
  * A station's logo, fetched once by the server. Channels without one just show their
  * name, which is why the image removes itself instead of leaving a broken picture.
  */
+function programmeArtwork(title) {
+  if (!title) return null;
+
+  const art = h('img', {
+    class: 'programme-art',
+    src: `/artwork?title=${encodeURIComponent(title)}`,
+    alt: '',
+    loading: 'lazy',
+  });
+
+  art.addEventListener('error', () => art.remove());
+
+  return art;
+}
+
 function channelLogo(virtual) {
   const logo = h('img', {
     class: 'channel-logo',
@@ -1848,6 +1863,10 @@ function createGuideView(device, player) {
     // quietly drops it: the progress line below is only there while it is recording.
     details.replaceChildren(...[
       h('div', { class: 'guide-details-head' },
+        // Both: the picture removes itself when there is none, and the station logo
+        // stays either way. "??" would never fall through, since the image element
+        // exists from the start and only gives up later, on error.
+        programmeArtwork(event.title),
         channelLogo(channel.virtual),
         h('h3', {}, event.title),
         event.rating && h('span', { class: 'badge' }, event.rating),

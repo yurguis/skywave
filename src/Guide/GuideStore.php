@@ -302,6 +302,50 @@ class GuideStore
      * Remember a device somebody added by address, so every browser sees it and not just
      * the one it was typed into.
      */
+    /**
+     * Remember that a programme has no picture, so it is not looked up again every time the
+     * guide refreshes. A channel showing "Paid Programming" all afternoon is the reason.
+     */
+    public function rememberArtworkMiss(string $key, string $title): void
+    {
+        $statement = $this->db->prepare(
+            'INSERT INTO artwork_misses (key, title, checked_at) VALUES (?, ?, ?)
+             ON CONFLICT (key) DO UPDATE SET title = excluded.title, checked_at = excluded.checked_at'
+        );
+        $statement->execute([$key, $title, time()]);
+    }
+
+    /**
+     * Whether a programme was looked up and not found since $since. A miss is not forever:
+     * something missing today may be added later.
+     */
+    public function artworkMissedRecently(string $key, int $since): bool
+    {
+        $statement = $this->db->prepare('SELECT checked_at FROM artwork_misses WHERE key = ?');
+        $statement->execute([$key]);
+        $checked = $statement->fetchColumn();
+
+        return $checked !== false && (int) $checked >= $since;
+    }
+
+    /**
+     * Every programme title in the guide, so artwork can be fetched for what is on.
+     *
+     * @return list<string>
+     */
+    public function eventTitles(?string $device = null): array
+    {
+        $statement = $device === null
+            ? $this->db->query('SELECT DISTINCT title FROM events')
+            : $this->db->prepare('SELECT DISTINCT e.title FROM events e JOIN channels c ON c.id = e.channel_id WHERE c.device = ?');
+
+        if ($device !== null) {
+            $statement->execute([$device]);
+        }
+
+        return array_values(array_filter(array_map('strval', $statement->fetchAll(\PDO::FETCH_COLUMN))));
+    }
+
     public function addDevice(string $host): void
     {
         $statement = $this->db->prepare('INSERT OR IGNORE INTO devices (host, added_at) VALUES (?, ?)');
@@ -413,6 +457,11 @@ class GuideStore
                 channels INTEGER,
                 events INTEGER,
                 error TEXT
+            );
+            CREATE TABLE IF NOT EXISTS artwork_misses (
+                key TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                checked_at INTEGER NOT NULL
             );
             CREATE TABLE IF NOT EXISTS devices (
                 host TEXT PRIMARY KEY,
