@@ -681,17 +681,28 @@ details > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
    ("104.1 WFOR-TV") never fit the width left beside the logo and the badges, so it breaks
    at the space instead. Clamped at two, so a long name still cannot grow the row: the
    parent sets nowrap for everything else in the cell, hence the explicit normal. */
+/* Logo, then the number over the call sign, then the badges: the same three parts in the
+   same places on every row, rather than only on the rows whose text happened not to fit.
+   Two real lines now, so no clamping is needed — that was a workaround for text that might
+   wrap, and it would fight an explicit structure. The number leads because it is what gets
+   scanned for; the call sign sits under it, quieter, and shortens itself when long. */
 .guide-channel-name {
   flex: 1 1 auto;
   min-width: 0;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  overflow: hidden;
-  white-space: normal;
-  overflow-wrap: anywhere;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   line-height: 1.2;
+}
+
+.guide-channel-number { font-weight: 600; }
+
+.guide-channel-call {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
 }
 .badge.hd {
   margin-left: 6px;
