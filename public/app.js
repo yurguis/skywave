@@ -1887,19 +1887,12 @@ function createGuideView(device, player) {
             channel.broadband && h('span', { class: 'badge tag-ott' }, 'OTT'),
             channel.drm && h('span', { class: 'badge tag-drm' }, 'DRM'),
           ),
-          // These rows have no programmes, so the details panel never opens and its Watch
-          // button is out of reach. Stations that can actually be played get their own.
-          channel.atsc3 && channel.streamUrl && !channel.drm && h('button', {
-            type: 'button',
-            class: 'guide-channel-play',
-            title: `Watch ${channel.virtual} ${channel.name} (no sound)`,
-            'aria-label': `Watch ${channel.virtual} ${channel.name}, no sound`,
-            onclick: (clickEvent) => watchAtsc3(channel, clickEvent.currentTarget),
-          }, '▶'),
         ),
         h('div', { class: 'guide-track' },
-          channel.events.length === 0 && h('div', { class: 'guide-empty' },
-            channel.atsc3 ? 'ATSC 3.0 — cannot be tuned here' : 'No guide data'),
+          // A row with no programmes never opens the details panel, so its watch button
+          // is out of reach. Anything that can be played gets one here instead: an
+          // internet-delivered station silently, an ordinary channel from its tuner.
+          channel.events.length === 0 && h('div', { class: 'guide-empty' }, ...emptyTrack(channel)),
           channel.events.map((event) => {
             const left = Math.max(0, (event.start - start) / span) * 100;
             const right = Math.min(1, (event.start + event.duration - start) / span) * 100;
@@ -2105,6 +2098,31 @@ function createGuideView(device, player) {
   }
 
   // Use a tuner already on the channel, or else an idle one.
+  /**
+   * What an empty row offers: a way to watch it where there is one, and a reason where
+   * there is not. An encrypted ATSC 3.0 station cannot be tuned here at all; one delivered
+   * over the internet can, without sound; an ordinary channel simply has no listings.
+   */
+  function emptyTrack(channel) {
+    if (channel.atsc3 && !(channel.streamUrl && !channel.drm)) {
+      return [h('span', {}, 'ATSC 3.0 — cannot be tuned here')];
+    }
+
+    const silent = Boolean(channel.atsc3);
+
+    return [
+      h('button', {
+        type: 'button',
+        class: 'guide-empty-play',
+        disabled: !silent && Boolean(channel.encrypted),
+        title: silent ? `Watch ${channel.virtual} ${channel.name} (no sound)` : `Watch ${channel.virtual} ${channel.name}`,
+        'aria-label': `Watch ${channel.virtual} ${channel.name}${silent ? ', no sound' : ''}`,
+        onclick: (clickEvent) => (silent ? watchAtsc3 : watch)(channel, clickEvent.currentTarget),
+      }, '▶'),
+      h('span', {}, silent ? 'ATSC 3.0 · no programme data' : 'No guide data'),
+    ];
+  }
+
   async function watchAtsc3(channel, button) {
     const label = button.textContent;
     button.disabled = true;
