@@ -1469,6 +1469,45 @@ function createPlayer(panel) {
    * Watch a recording. An mp4 plays as it is; a ts recording is converted on the server,
    * and playback starts as soon as the first segments are ready.
    */
+  /**
+   * An ATSC 3.0 station whose media is served over the internet. No tuner is involved, so
+   * none is found or freed, and nothing here can decode its AC-4 audio: the picture plays
+   * silently. Polling is the same as any other session once it has started.
+   */
+  async function playAtsc3({ device, virtual, name }) {
+    await stop();
+
+    current = null;
+    // These are live: the manifest is dynamic and the playlist omits an end list, so the
+    // live badge and its jump-to-live behave as they do for a tuner. Recording does not:
+    // nothing here can capture a stream that never came through the device.
+    liveButton.hidden = false;
+    recordButton.hidden = true;
+    panel.hidden = false;
+    channelLabel.replaceChildren(...[
+      channelLogo(virtual),
+      h('span', {}, `${virtual} ${name} · no sound`),
+    ].filter(Boolean));
+    programLabel.textContent = '';
+    spinner.hidden = false;
+    setStatus('Starting the transcoder…');
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    try {
+      session = await api('/api/streams/atsc3', {
+        method: 'POST',
+        body: JSON.stringify({ device, virtual, viewer: VIEWER_ID }),
+      });
+    } catch (error) {
+      spinner.hidden = true;
+      setStatus(error.message, true);
+
+      return;
+    }
+
+    poll();
+  }
+
   async function playFile({ recordingId, kind, playlist, url, captions, title, subtitle, virtual }) {
     await stop();
 
@@ -1680,7 +1719,7 @@ function createPlayer(panel) {
     if (session) navigator.sendBeacon(`/api/streams/${session.id}/leave?viewer=${VIEWER_ID}`);
   }
 
-  return { play, playFile, stop, leaveOnUnload, recordingsChanged: updateRecordButton };
+  return { play, playFile, playAtsc3, stop, leaveOnUnload, recordingsChanged: updateRecordButton };
 }
 
 // ---------------------------------------------------------------------------
@@ -1852,8 +1891,10 @@ function createGuideView(device, player) {
           ),
         ),
         h('div', { class: 'guide-track' },
-          channel.events.length === 0 && h('div', { class: 'guide-empty' },
-            channel.atsc3 ? 'ATSC 3.0 — cannot be tuned here' : 'No guide data'),
+          // A row with no programmes never opens the details panel, so its watch button
+          // is out of reach. Anything that can be played gets one here instead: an
+          // internet-delivered station silently, an ordinary channel from its tuner.
+          channel.events.length === 0 && h('div', { class: 'guide-empty' }, ...emptyTrack(channel)),
           channel.events.map((event) => {
             const left = Math.max(0, (event.start - start) / span) * 100;
             const right = Math.min(1, (event.start + event.duration - start) / span) * 100;
@@ -2059,6 +2100,53 @@ function createGuideView(device, player) {
   }
 
   // Use a tuner already on the channel, or else an idle one.
+  /**
+   * What an empty row offers: a way to watch it where there is one, and a reason where
+   * there is not. An encrypted ATSC 3.0 station cannot be tuned here at all; one delivered
+   * over the internet can, without sound; an ordinary channel simply has no listings.
+   */
+  function emptyTrack(channel) {
+    const silent   = Boolean(channel.atsc3);
+    const playable = silent ? Boolean(channel.streamUrl) && !channel.drm : !channel.encrypted;
+
+    // Every empty row offers the same control in the same place, so the ones that cannot be
+    // played read as refused rather than as forgotten. The reason is on the button.
+    const reason = playable
+      ? `Watch ${channel.virtual} ${channel.name}${silent ? ' (no sound)' : ''}`
+      : (silent
+        ? `${channel.virtual} ${channel.name} is encrypted and cannot be played here`
+        : `${channel.virtual} ${channel.name} is encrypted`);
+
+    return [
+      h('button', {
+        type: 'button',
+        class: 'guide-empty-play',
+        disabled: !playable,
+        title: reason,
+        'aria-label': reason,
+        onclick: (clickEvent) => (silent ? watchAtsc3 : watch)(channel, clickEvent.currentTarget),
+      }, '▶'),
+      h('span', {}, silent
+        ? (playable ? 'ATSC 3.0 · no programme data' : 'ATSC 3.0 — cannot be tuned here')
+        : 'No guide data'),
+    ];
+  }
+
+  async function watchAtsc3(channel, button) {
+    const label = button.textContent;
+    button.disabled = true;
+    button.textContent = '…';
+
+    try {
+      await player.playAtsc3({ device: host, virtual: channel.virtual, name: channel.name });
+    } catch (error) {
+      showError(error);
+    } finally {
+      button.disabled = false;
+      button.textContent = label;
+    }
+  }
+
   async function watch(channel, button) {
     const label = button.textContent;
     button.disabled = true;

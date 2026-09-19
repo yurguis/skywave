@@ -732,6 +732,25 @@ details > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
   margin-left: auto;
   flex: none;
 }
+
+/* Sits in the empty track, ahead of the reason the row is empty. These rows carry no
+   programmes, so the details panel never opens and its Watch button cannot be reached. */
+.guide-empty-play {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--accent);
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.guide-empty-play:hover:not(:disabled) { border-color: var(--accent); }
+.guide-empty-play:disabled { opacity: .5; cursor: default; }
 /* One size for all three. The HD pill kept the smaller type and tighter padding it was
    given back when it sat alone against the channel name, which left it visibly shorter
    than the 3.0 and DRM pills once it had neighbours. The compact metrics win here, since
@@ -793,7 +812,7 @@ details > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 .guide-event .title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .guide-event .time { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; }
 .guide-now { position: absolute; top: 0; bottom: 0; z-index: 1; width: 2px; background: var(--red); pointer-events: none; }
-.guide-empty { position: absolute; inset: 0; display: flex; align-items: center; padding: 0 12px; font-size: 12px; color: var(--muted); }
+.guide-empty { position: absolute; inset: 0; display: flex; align-items: center; gap: 8px; padding: 0 12px; font-size: 12px; color: var(--muted); }
 
 /* A modal: "display" only while open, or it would override the browser's own
    dialog:not([open]) rule and show the details with nothing selected. */

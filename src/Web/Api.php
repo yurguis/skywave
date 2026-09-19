@@ -48,6 +48,7 @@ use Symfony\Component\HttpFoundation\Request;
  *   GET /api/channelmaps/{name}                         channel numbers and frequencies
  *
  *   POST   /api/devices/{ip}/tuners/{n}/stream  {"program": 3, "viewer": "<id>"}   watch a program
+ *   POST   /api/streams/atsc3  {"device": "<ip>", "virtual": "102.1", "viewer": "<id>"}
  *   GET    /api/streams                                  active playback sessions
  *   GET    /api/streams/{id}?viewer=<id>                 session state; keeps the viewer watching
  *   DELETE /api/streams/{id}?viewer=<id>                 stop watching (POST .../leave for sendBeacon)
@@ -716,6 +717,15 @@ class Api
             return ['streams' => $streams->all()];
         }
 
+        // A station whose media comes over the internet needs no tuner, so it does not go
+        // through the device routes. The manifest is looked up here rather than sent by the
+        // page: the page has no business knowing where a broadcaster serves its media.
+        if ($path === '/api/streams/atsc3') {
+            self::requireMethod($method, 'POST');
+
+            return $this->startAtsc3Stream(self::jsonBody($request));
+        }
+
         if (!preg_match('#^/api/streams/([a-f0-9]{16})(/leave)?$#', $path, $match)) {
             throw new ApiException('Not found', 404);
         }
@@ -738,6 +748,45 @@ class Api
             default:
                 throw new ApiException("Method $method not allowed, use GET or DELETE", 405);
         }
+    }
+
+    /**
+     * Start playing an ATSC 3.0 station that carries its media over the internet.
+     *
+     * Only the picture is played: the audio is AC-4, which nothing here can decode. A
+     * station that is encrypted, or that the broadcast never gave a manifest for, cannot be
+     * played at all and says so rather than starting a transcoder that would never work.
+     *
+     * @param array<string, mixed> $body
+     * @return array<string, mixed>
+     */
+    private function startAtsc3Stream(array $body): array
+    {
+        $device  = $body['device'] ?? null;
+        $virtual = $body['virtual'] ?? null;
+        $viewer  = self::validateViewer($body['viewer'] ?? null);
+
+        if (!is_string($device) || !is_string($virtual)) {
+            throw new ApiException('Expected {"device": "<ip>", "virtual": "<channel>", "viewer": "<id>"}', 400);
+        }
+
+        foreach ($this->guideStore()->getAtsc3Lineup(self::validateHost($device)) as $station) {
+            if ($station['virtual'] !== $virtual) {
+                continue;
+            }
+
+            if ($station['drm']) {
+                throw new ApiException("$virtual is encrypted and cannot be played", 409);
+            }
+
+            if (!is_string($station['streamUrl']) || $station['streamUrl'] === '') {
+                throw new ApiException("$virtual carries its media over the air, which cannot be played here", 409);
+            }
+
+            return $this->liveStreams()->joinUrl($station['streamUrl'], $virtual, $viewer);
+        }
+
+        throw new ApiException("No such ATSC 3.0 station: $virtual", 404);
     }
 
     private function liveStreams(): LiveStreams
