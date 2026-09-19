@@ -732,6 +732,27 @@ details > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
   margin-left: auto;
   flex: none;
 }
+
+/* Only on the stations that can actually be played. They carry no programmes, so the
+   details panel never opens and its Watch button cannot be reached. Small and quiet: it
+   shares a 170px column with the badges, and what it starts has no sound. */
+.guide-channel-play {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-left: 4px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--accent);
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.guide-channel-play:hover:not(:disabled) { border-color: var(--accent); }
+.guide-channel-play:disabled { opacity: .5; cursor: default; }
 /* One size for all three. The HD pill kept the smaller type and tighter padding it was
    given back when it sat alone against the channel name, which left it visibly shorter
    than the 3.0 and DRM pills once it had neighbours. The compact metrics win here, since

@@ -99,6 +99,54 @@ class LiveStreams
      * @return array<string, mixed>
      */
     /**
+     * Watch something delivered over the internet rather than over the air.
+     *
+     * Some ATSC 3.0 services carry their media on a CDN and only describe it over the air.
+     * There is no tuner involved, so none is reserved and none is restored; the session is
+     * identified by the manifest it plays. The audio is AC-4, which nothing here can decode,
+     * so only the picture is taken.
+     *
+     * @return array<string, mixed>
+     */
+    public function joinUrl(string $url, string $label, string $viewer): array
+    {
+        return $this->locked(function () use ($url, $label, $viewer): array {
+            $this->reap();
+
+            $id      = substr(hash('sha256', "url|$url"), 0, 16);
+            $session = $this->load($id);
+
+            if ($session !== null && !$this->isRunning($session['pid'])) {
+                $this->terminate($session, false);
+                $session = null;
+            }
+
+            if ($session === null) {
+                if (count($this->loadAll()) >= $this->maxStreams) {
+                    throw new ApiException("Already playing $this->maxStreams streams, the most allowed (MAX_STREAMS)", 409);
+                }
+
+                $session = $this->spawn($id, $this->videoOnlyArguments($url, "$this->directory/$id"), [
+                    'id'              => $id,
+                    'host'            => $label,
+                    'tuner'           => null,
+                    'channel'         => $label,
+                    'physicalChannel' => null,
+                    'program'         => null,
+                    'targetBefore'    => null,
+                    'renditions'      => count($this->renditions),
+                    'audio'           => [],
+                ]);
+            }
+
+            $session['viewers'][$viewer] = time();
+            $this->save($session);
+
+            return $this->describe($session);
+        });
+    }
+
+    /**
      * @param list<array{language: ?string, name: ?string}> $audioTracks the programme's audio
      *        tracks as the guide last saw them; several means the viewer can choose
      */
@@ -235,28 +283,9 @@ class LiveStreams
     private function start(string $id, string $host, int $tuner, string $channel, int $physicalChannel, int $program, string $targetBefore, array $audioTracks = []): array
     {
         $directory = "$this->directory/$id";
-        self::removeDirectory($directory);
-
-        if (!@mkdir($directory, 0700, true) && !is_dir($directory)) {
-            throw new RuntimeException("Unable to create $directory");
-        }
-
         $source    = sprintf('http://%s:%d/tuner%d/ch%d', $host, self::HTTP_STREAM_PORT, $tuner, $physicalChannel);
-        $arguments = array_map('escapeshellarg', $this->ffmpegArguments($source, $program, $directory, $audioTracks));
 
-        // setsid detaches ffmpeg from this PHP worker so it outlives the request; its pid
-        // is also its process group, which is what terminate() signals.
-        $pid = (int) trim((string) shell_exec(sprintf(
-            'setsid %s > %s 2>&1 < /dev/null & echo $!',
-            implode(' ', $arguments),
-            escapeshellarg("$directory/ffmpeg.log")
-        )));
-
-        if ($pid <= 0) {
-            throw new RuntimeException('Unable to start ffmpeg');
-        }
-
-        return [
+        return $this->spawn($id, $this->ffmpegArguments($source, $program, $directory, $audioTracks), [
             'id'              => $id,
             'host'            => $host,
             'tuner'           => $tuner,
@@ -264,11 +293,47 @@ class LiveStreams
             'physicalChannel' => $physicalChannel,
             'program'         => $program,
             'targetBefore'    => $targetBefore,
-            'pid'             => $pid,
             'renditions'      => count($this->renditions),
             // Kept so the player can name each track; the playlist only ever says stereo,
             // because that is what every one of them is converted to.
-            'audio'     => array_values($audioTracks),
+            'audio' => array_values($audioTracks),
+        ]);
+    }
+
+    /**
+     * Start a transcoder and make a session of it.
+     *
+     * Shared by both ways in, so a session fed from a tuner and one fed from a manifest are
+     * launched and reaped alike; only the arguments and the fields describing the source
+     * differ.
+     *
+     * @param string[]             $arguments
+     * @param array<string, mixed> $session
+     * @return array<string, mixed>
+     */
+    private function spawn(string $id, array $arguments, array $session): array
+    {
+        $directory = "$this->directory/$id";
+        self::removeDirectory($directory);
+
+        if (!@mkdir($directory, 0700, true) && !is_dir($directory)) {
+            throw new RuntimeException("Unable to create $directory");
+        }
+
+        // setsid detaches ffmpeg from this PHP worker so it outlives the request; its pid
+        // is also its process group, which is what terminate() signals.
+        $pid = (int) trim((string) shell_exec(sprintf(
+            'setsid %s > %s 2>&1 < /dev/null & echo $!',
+            implode(' ', array_map('escapeshellarg', $arguments)),
+            escapeshellarg("$directory/ffmpeg.log")
+        )));
+
+        if ($pid <= 0) {
+            throw new RuntimeException('Unable to start ffmpeg');
+        }
+
+        return $session + [
+            'pid'       => $pid,
             'startedAt' => time(),
             'endedAt'   => null,
             'viewers'   => [],
@@ -359,6 +424,51 @@ class LiveStreams
     }
 
     /**
+     * ffmpeg arguments for a manifest played without sound.
+     *
+     * No deinterlacing: these are sent progressive, and estdif would only soften them. No
+     * audio at all, because AC-4 has no decoder here, so the variant map names video alone.
+     *
+     * @return string[]
+     */
+    private function videoOnlyArguments(string $source, string $directory): array
+    {
+        $top     = $this->renditions[0];
+        $count   = count($this->renditions);
+        $graph   = ['[0:v:0]split=' . $count . implode('', array_map(fn (int $i) => "[s$i]", array_keys($this->renditions)))];
+        $outputs = [];
+        $streams = [];
+
+        foreach ($this->renditions as $i => $height) {
+            $graph[] = sprintf('[s%d]scale=w=-2:h=trunc(min(%d\,ih*%d/%d)/2)*2[v%d]', $i, $height, $height, $top, $i);
+            $maxrate = self::maxBitrate($height);
+            $outputs = array_merge($outputs, [
+                '-map', "[v$i]",
+                "-maxrate:v:$i", "{$maxrate}k", "-bufsize:v:$i", ($maxrate * 2) . 'k',
+            ]);
+            $streams[] = "v:$i";
+        }
+
+        return array_merge([
+            $this->ffmpeg, '-hide_banner', '-nostdin', '-loglevel', 'error',
+            '-i', $source,
+            '-filter_complex', implode(';', $graph),
+        ], $outputs, [
+            '-an',
+            '-fps_mode', 'passthrough',
+            '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-crf', '21',
+            '-force_key_frames', 'expr:gte(t,n_forced*2)', '-sc_threshold', '0',
+            '-f', 'hls', '-hls_time', (string) self::SEGMENT_SECONDS,
+            '-hls_list_size', (string) max(10, intdiv($this->rewindSeconds, self::SEGMENT_SECONDS)),
+            '-hls_flags', 'delete_segments+independent_segments+omit_endlist+temp_file',
+            '-var_stream_map', implode(' ', $streams),
+            '-master_pl_name', 'index.m3u8',
+            '-hls_segment_filename', "$directory/v%v_%05d.ts",
+            "$directory/v%v.m3u8",
+        ]);
+    }
+
+    /**
      * Highest video bitrate for a picture height, in kbit/s.
      */
     private static function maxBitrate(int $height): int
@@ -425,7 +535,10 @@ class LiveStreams
 
         self::removeDirectory("$this->directory/{$session['id']}");
 
-        if ($restoreTuner) {
+        // A session fed from a URL never held a tuner, so there is nothing to give back.
+        // Every restoring caller comes through here, which is why the guard lives here
+        // rather than at each of them.
+        if ($restoreTuner && ($session['tuner'] ?? null) !== null) {
             $tuner = new Tuner(new ControlClient($session['host'], 65001, 2.0), $session['tuner']);
             TunerRelease::restoreChannel($tuner, $session['channel'], $session['targetBefore']);
         }

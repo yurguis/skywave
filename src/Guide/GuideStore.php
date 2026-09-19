@@ -147,8 +147,8 @@ class GuideStore
 
             $insert = $this->db->prepare(
                 'INSERT OR REPLACE INTO atsc3_channels
-                    (device, virtual, name, video_codec, audio_codec, drm, broadband, hd, source, updated_at)
-                 VALUES (:device, :virtual, :name, :video, :audio, :drm, :broadband, :hd, :source, :now)'
+                    (device, virtual, name, video_codec, audio_codec, drm, broadband, hd, source, stream_url, updated_at)
+                 VALUES (:device, :virtual, :name, :video, :audio, :drm, :broadband, :hd, :source, :stream, :now)'
             );
 
             foreach ($channels as $channel) {
@@ -162,6 +162,7 @@ class GuideStore
                     'broadband' => empty($channel['broadband']) ? 0 : 1,
                     'hd'        => empty($channel['hd']) ? 0 : 1,
                     'source'    => $source,
+                    'stream'    => $channel['streamUrl'] ?? null,
                     'now'       => $now,
                 ]);
             }
@@ -205,7 +206,10 @@ class GuideStore
             'videoCodec' => $row['video_codec'],
             'audioCodec' => $row['audio_codec'],
             'source'     => (string) ($row['source'] ?? self::ATSC3_SOURCE_LINEUP),
-            'events'     => [],
+            // Where its media is served, when the broadcast says so. Only some ATSC 3.0
+            // services carry their media over the internet; the rest have none.
+            'streamUrl' => $row['stream_url'] ?? null,
+            'events'    => [],
         ], $statement === false ? [] : $statement->fetchAll());
     }
 
@@ -569,6 +573,7 @@ class GuideStore
                 audio_codec TEXT,
                 drm INTEGER NOT NULL DEFAULT 0,
                 broadband INTEGER NOT NULL DEFAULT 0,
+                stream_url TEXT,
                 hd INTEGER NOT NULL DEFAULT 0,
                 source TEXT NOT NULL DEFAULT \'lineup\',
                 updated_at INTEGER NOT NULL,
@@ -584,8 +589,9 @@ class GuideStore
         // after the first release has to be added by hand.
         $this->addMissingColumns('channels', ['hd' => 'INTEGER NOT NULL DEFAULT 0', 'audio' => 'TEXT']);
         $this->addMissingColumns('atsc3_channels', [
-            'source'    => "TEXT NOT NULL DEFAULT 'lineup'",
-            'broadband' => 'INTEGER NOT NULL DEFAULT 0',
+            'source'     => "TEXT NOT NULL DEFAULT 'lineup'",
+            'broadband'  => 'INTEGER NOT NULL DEFAULT 0',
+            'stream_url' => 'TEXT',
         ]);
     }
 

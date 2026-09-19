@@ -184,7 +184,7 @@ class Atsc3LineupTest extends TestCase
     /**
      * @return array<string, mixed>
      */
-    private function station(string $virtual, string $name, bool $drm = true, bool $broadband = false): array
+    private function station(string $virtual, string $name, bool $drm = true, bool $broadband = false, ?string $streamUrl = null): array
     {
         return [
             'virtual'    => $virtual,
@@ -193,6 +193,7 @@ class Atsc3LineupTest extends TestCase
             'audioCodec' => 'AC4',
             'drm'        => $drm,
             'broadband'  => $broadband,
+            'streamUrl'  => $streamUrl,
             'hd'         => true,
         ];
     }
@@ -218,6 +219,24 @@ class Atsc3LineupTest extends TestCase
         $this->save();
 
         $this->assertFalse($this->guideChannel('104.1')['broadband']);
+    }
+
+    public function testAStationRemembersWhereItsMediaIsServed(): void
+    {
+        // Only some ATSC 3.0 services carry their media over the internet; the broadcast
+        // names the manifest, and without it there is nothing to play.
+        $this->store->saveAtsc3Lineup(self::DEVICE, [
+            $this->station('102.1', 'WPBT-HD', drm: false, broadband: true, streamUrl: 'https://cdn.example/manifest.mpd'),
+        ], GuideStore::ATSC3_SOURCE_SLT);
+
+        $this->assertSame('https://cdn.example/manifest.mpd', $this->guideChannel('102.1')['streamUrl']);
+    }
+
+    public function testAStationWithNoManifestHasNone(): void
+    {
+        $this->save();
+
+        $this->assertNull($this->guideChannel('104.1')['streamUrl']);
     }
 
     /**

@@ -1469,6 +1469,43 @@ function createPlayer(panel) {
    * Watch a recording. An mp4 plays as it is; a ts recording is converted on the server,
    * and playback starts as soon as the first segments are ready.
    */
+  /**
+   * An ATSC 3.0 station whose media is served over the internet. No tuner is involved, so
+   * none is found or freed, and nothing here can decode its AC-4 audio: the picture plays
+   * silently. Polling is the same as any other session once it has started.
+   */
+  async function playAtsc3({ device, virtual, name }) {
+    await stop();
+
+    current = null;
+    // No live edge to chase and nothing to record: neither button means anything here.
+    liveButton.hidden = true;
+    recordButton.hidden = true;
+    panel.hidden = false;
+    channelLabel.replaceChildren(...[
+      channelLogo(virtual),
+      h('span', {}, `${virtual} ${name} · no sound`),
+    ].filter(Boolean));
+    programLabel.textContent = '';
+    spinner.hidden = false;
+    setStatus('Starting the transcoder…');
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    try {
+      session = await api('/api/streams/atsc3', {
+        method: 'POST',
+        body: JSON.stringify({ device, virtual, viewer: VIEWER_ID }),
+      });
+    } catch (error) {
+      spinner.hidden = true;
+      setStatus(error.message, true);
+
+      return;
+    }
+
+    poll();
+  }
+
   async function playFile({ recordingId, kind, playlist, url, captions, title, subtitle, virtual }) {
     await stop();
 
@@ -1680,7 +1717,7 @@ function createPlayer(panel) {
     if (session) navigator.sendBeacon(`/api/streams/${session.id}/leave?viewer=${VIEWER_ID}`);
   }
 
-  return { play, playFile, stop, leaveOnUnload, recordingsChanged: updateRecordButton };
+  return { play, playFile, playAtsc3, stop, leaveOnUnload, recordingsChanged: updateRecordButton };
 }
 
 // ---------------------------------------------------------------------------
@@ -1850,6 +1887,15 @@ function createGuideView(device, player) {
             channel.broadband && h('span', { class: 'badge tag-ott' }, 'OTT'),
             channel.drm && h('span', { class: 'badge tag-drm' }, 'DRM'),
           ),
+          // These rows have no programmes, so the details panel never opens and its Watch
+          // button is out of reach. Stations that can actually be played get their own.
+          channel.atsc3 && channel.streamUrl && !channel.drm && h('button', {
+            type: 'button',
+            class: 'guide-channel-play',
+            title: `Watch ${channel.virtual} ${channel.name} (no sound)`,
+            'aria-label': `Watch ${channel.virtual} ${channel.name}, no sound`,
+            onclick: (clickEvent) => watchAtsc3(channel, clickEvent.currentTarget),
+          }, '▶'),
         ),
         h('div', { class: 'guide-track' },
           channel.events.length === 0 && h('div', { class: 'guide-empty' },
@@ -2059,6 +2105,21 @@ function createGuideView(device, player) {
   }
 
   // Use a tuner already on the channel, or else an idle one.
+  async function watchAtsc3(channel, button) {
+    const label = button.textContent;
+    button.disabled = true;
+    button.textContent = '…';
+
+    try {
+      await player.playAtsc3({ device: host, virtual: channel.virtual, name: channel.name });
+    } catch (error) {
+      showError(error);
+    } finally {
+      button.disabled = false;
+      button.textContent = label;
+    }
+  }
+
   async function watch(channel, button) {
     const label = button.textContent;
     button.disabled = true;
