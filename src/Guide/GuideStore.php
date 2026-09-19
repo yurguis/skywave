@@ -126,6 +126,21 @@ class GuideStore
     public const ATSC3_SOURCE_SLT = 'slt';
 
     /**
+     * The 1.0 channel an ATSC 3.0 service simulcasts, by the numbering the device uses: a
+     * hundred on the major channel. Null when the number cannot be one.
+     *
+     * Kept here so the guide and the pictures agree on what counts as a counterpart.
+     */
+    public static function atsc3Counterpart(string $virtual): ?string
+    {
+        if (!preg_match('/^(\d{1,4})\.(\d{1,4})$/', $virtual, $match) || (int) $match[1] <= 100) {
+            return null;
+        }
+
+        return ((int) $match[1] - 100) . '.' . $match[2];
+    }
+
+    /**
      * Replace the ATSC 3.0 stations known for a device, for one source only.
      *
      * Deliberately not in `channels`: that table drives scanning, tuning and recording, and
@@ -326,9 +341,23 @@ class GuideStore
             $guide[] = $channel;
         }
 
-        // Listed alongside the rest so the numbering reads in order, but carrying no
-        // events and marked so the page can say why.
+        // An ATSC 3.0 service simulcasts the channel a hundred below it, so it is showing
+        // the same programmes. It carries no tables of its own, so the counterpart's are
+        // shown rather than leaving the row blank. A service with no counterpart in the
+        // lineup stays empty.
+        $byVirtual = [];
+
+        foreach ($guide as $channel) {
+            $byVirtual[$channel['virtual']] = $channel['events'];
+        }
+
         foreach ($this->getAtsc3Lineup($device) as $channel) {
+            $counterpart = self::atsc3Counterpart((string) $channel['virtual']);
+
+            if ($counterpart !== null) {
+                $channel['events'] = $byVirtual[$counterpart] ?? [];
+            }
+
             $guide[] = $channel;
         }
 

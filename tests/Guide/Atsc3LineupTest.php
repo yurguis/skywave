@@ -239,6 +239,47 @@ class Atsc3LineupTest extends TestCase
         $this->assertNull($this->guideChannel('104.1')['streamUrl']);
     }
 
+    public function testAStationShowsTheProgrammesOfTheChannelItSimulcasts(): void
+    {
+        // A 3.0 service carries no tables of its own, but it is the same broadcast as the
+        // channel a hundred below, so that channel's listings are what it is showing.
+        $this->addEvent('Pro Motocross Championship');
+        $this->store->saveAtsc3Lineup(
+            self::DEVICE,
+            [$this->station('106.1', 'WTVJ-DT')],
+            GuideStore::ATSC3_SOURCE_SLT
+        );
+
+        $events = $this->guideChannel('106.1')['events'];
+
+        $this->assertCount(1, $events);
+        $this->assertSame('Pro Motocross Championship', $events[0]['title']);
+        $this->assertSame($this->guideChannel('6.1')['events'], $events);
+    }
+
+    public function testAStationWithNoCounterpartStaysEmpty(): void
+    {
+        // Nothing in the lineup is numbered 4.1, so there is nothing to show and nothing
+        // is invented for it.
+        $this->addEvent('Pro Motocross Championship');
+        $this->save();
+
+        $this->assertSame([], $this->guideChannel('104.1')['events']);
+    }
+
+    private function addEvent(string $title, ?int $start = null): void
+    {
+        $db = new \PDO('sqlite:' . $this->directory . '/guide.sqlite', null, null, [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);
+
+        $find = $db->prepare('SELECT id FROM channels WHERE device = ? AND physical = ? AND program = ?');
+        $find->execute([self::DEVICE, 29, 3]);
+
+        $db->prepare(
+            'INSERT OR REPLACE INTO events (channel_id, event_id, start, duration, title, rating, description, updated_at)
+             VALUES (?, ?, ?, ?, ?, NULL, NULL, ?)'
+        )->execute([(int) $find->fetchColumn(), 42, $start ?? time() + 600, 1800, $title, time()]);
+    }
+
     /**
      * @return array<string, mixed>
      */
