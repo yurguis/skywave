@@ -1957,8 +1957,8 @@ function createGuideView(device, player) {
         h('button', {
           type: 'button',
           class: 'watch',
-          disabled: channel.encrypted,
-          onclick: (clickEvent) => watch(channel, clickEvent.currentTarget),
+          disabled: channel.atsc3 ? !(channel.streamUrl && !channel.drm) : channel.encrypted,
+          onclick: (clickEvent) => (channel.atsc3 ? watchAtsc3 : watch)(channel, clickEvent.currentTarget),
         }, `▶ Watch ${channel.virtual} ${channel.name}`),
         recordButton(channel, event, onNow, scheduled, recording),
         !onNow && h('span', { class: 'muted' }, 'Watching shows what the channel is broadcasting right now.'),
@@ -2016,13 +2016,13 @@ function createGuideView(device, player) {
       h('button', {
         type: 'button',
         class: 'secondary record',
-        disabled: channel.encrypted,
+        disabled: channel.atsc3 || channel.encrypted,
         onclick: (clickEvent) => record(channel, event, clickEvent.currentTarget, chosen.value),
       }, onNow ? '● Record the rest' : '● Record'),
       h('button', {
         type: 'button',
         class: 'secondary record',
-        disabled: channel.encrypted,
+        disabled: channel.atsc3 || channel.encrypted,
         title: 'Record this whenever it is on this channel',
         onclick: (clickEvent) => recordSeries(channel, event, clickEvent.currentTarget, chosen.value),
       }, '● All episodes'),
