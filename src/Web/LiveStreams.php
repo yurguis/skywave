@@ -341,10 +341,12 @@ class LiveStreams
             // Key frames at the same instants in every rendition, so players can switch
             // between them at any segment.
             '-force_key_frames', 'expr:gte(t,n_forced*2)', '-sc_threshold', '0',
-            // No downmix: a 5.1 broadcast is streamed as 5.1, in whatever language it
-            // carries. Browsers decode multi-channel AAC, and flattening it here threw
-            // away surround the air had already sent.
-            '-c:a', 'aac',
+            // Downmixed to stereo. A browser's media source does not reliably decode
+            // 5.1 AAC: passing surround through left every channel that broadcasts it
+            // stuck at buffering, with segments written and no error to show for it.
+            // Converting a recording to a file keeps 5.1, because that is not played
+            // through a browser.
+            '-c:a', 'aac', '-ac', '2',
             // Each playlist keeps the rewind window; older segments are deleted.
             '-f', 'hls', '-hls_time', (string) self::SEGMENT_SECONDS,
             '-hls_list_size', (string) max(10, intdiv($this->rewindSeconds, self::SEGMENT_SECONDS)),
