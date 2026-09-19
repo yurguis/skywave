@@ -347,7 +347,45 @@ button:disabled { opacity: .55; cursor: progress; }
 .video-wrap button.overlay-icon[aria-pressed="true"] { border-radius: 6px; box-shadow: inset 0 -3px 0 #fff; }
 .video-wrap button.overlay-record { color: #ff4d4d; }
 
-.overlay-volume { width: 90px; accent-color: #fff; }
+/* Drawn rather than left to the browser, so the bar agrees with the handle at both ends.
+   A range thumb's centre only travels from half a thumb in to half a thumb short of the
+   end, so the fill stops at the thumb's centre: at 0 that 6.5px hides under the left half
+   of the handle and the bar reads empty, at 1 the handle's right half covers the rest and
+   it reads full. Left to itself the track showed space beyond the handle at both ends,
+   as though it could still go further. */
+.overlay-volume {
+  width: 90px;
+  height: 16px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  --level: 1;
+}
+
+.overlay-volume::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right,
+    #fff calc(var(--level) * (100% - 13px) + 6.5px),
+    rgb(255 255 255 / .3) calc(var(--level) * (100% - 13px) + 6.5px));
+}
+
+.overlay-volume::-webkit-slider-thumb {
+  width: 13px;
+  height: 13px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  background: #fff;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* Firefox measures its own progress from the thumb, so it needs no arithmetic. */
+.overlay-volume::-moz-range-track { height: 4px; border-radius: 2px; background: rgb(255 255 255 / .3); }
+.overlay-volume::-moz-range-progress { height: 4px; border-radius: 2px; background: #fff; }
+.overlay-volume::-moz-range-thumb { width: 13px; height: 13px; border: 0; border-radius: 50%; background: #fff; }
 .overlay-time { margin-left: 8px; font-size: 13px; color: rgb(255 255 255 / .85); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .overlay-spacer { flex: 1; }
 
