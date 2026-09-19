@@ -873,6 +873,19 @@ class Api
         return array_map(static function (array $channel) use ($logos, $artwork): array {
             $channel['logo'] = $logos->pathFor((string) $channel['virtual']) !== null;
 
+            // An ATSC 3.0 service simulcasts the channel a hundred below it, and the
+            // station's logo is filed under that number. When the 3.0 number has none of
+            // its own, the counterpart is where to look, and the page is told which number
+            // to ask for so it does not request one that was never fetched.
+            if ($channel['logo'] === false && ($channel['atsc3'] ?? false)) {
+                $counterpart = self::atsc3Counterpart((string) $channel['virtual']);
+
+                if ($counterpart !== null && $logos->pathFor($counterpart) !== null) {
+                    $channel['logo']    = true;
+                    $channel['logoFor'] = $counterpart;
+                }
+            }
+
             $channel['events'] = array_map(static function (array $event) use ($artwork): array {
                 $event['art'] = $artwork->pathFor((string) ($event['title'] ?? '')) !== null;
 
@@ -902,6 +915,19 @@ class Api
 
             return $recording;
         }, $recordings);
+    }
+
+    /**
+     * The 1.0 channel an ATSC 3.0 service simulcasts, by the numbering the device uses: a
+     * hundred on the major channel. Null when the number cannot be one.
+     */
+    private static function atsc3Counterpart(string $virtual): ?string
+    {
+        if (!preg_match('/^(\d{1,4})\.(\d{1,4})$/', $virtual, $match) || (int) $match[1] <= 100) {
+            return null;
+        }
+
+        return ((int) $match[1] - 100) . '.' . $match[2];
     }
 
     /**

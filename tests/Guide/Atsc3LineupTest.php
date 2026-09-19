@@ -184,7 +184,7 @@ class Atsc3LineupTest extends TestCase
     /**
      * @return array<string, mixed>
      */
-    private function station(string $virtual, string $name, bool $drm = true): array
+    private function station(string $virtual, string $name, bool $drm = true, bool $broadband = false): array
     {
         return [
             'virtual'    => $virtual,
@@ -192,8 +192,32 @@ class Atsc3LineupTest extends TestCase
             'videoCodec' => 'HEVC',
             'audioCodec' => 'AC4',
             'drm'        => $drm,
+            'broadband'  => $broadband,
             'hd'         => true,
         ];
+    }
+
+    public function testAStationDeliveredOverBroadbandSaysSo(): void
+    {
+        // Independent of protection: a station can be unencrypted and still carry part of
+        // itself over the internet, which is what separates these from the rest.
+        $this->store->saveAtsc3Lineup(
+            self::DEVICE,
+            [$this->station('102.1', 'WPBT-HD', drm: false, broadband: true)],
+            GuideStore::ATSC3_SOURCE_SLT
+        );
+
+        $station = $this->guideChannel('102.1');
+
+        $this->assertTrue($station['broadband']);
+        $this->assertFalse($station['drm']);
+    }
+
+    public function testAnOrdinaryStationIsNotMarkedBroadband(): void
+    {
+        $this->save();
+
+        $this->assertFalse($this->guideChannel('104.1')['broadband']);
     }
 
     /**

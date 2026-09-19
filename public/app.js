@@ -1838,7 +1838,7 @@ function createGuideView(device, player) {
       h('div', { class: 'guide-row guide-header' }, h('div', { class: 'guide-channel' }), h('div', { class: 'guide-track' }, ticks, nowMarker())),
       ...channels.map((channel) => h('div', { class: channel.atsc3 ? 'guide-row is-unsupported' : 'guide-row' },
         h('div', { class: 'guide-channel', title: `${channel.virtual} ${channel.name}` },
-          channelLogo(channel.virtual, channel.logo, true),
+          channelLogo(channel.logoFor ?? channel.virtual, channel.logo, true),
           // The badges are siblings of the name, not inside it: the name is what truncates,
           // and a badge within it was cut off along with the text it followed.
           h('span', { class: 'guide-channel-name' },
@@ -1847,6 +1847,7 @@ function createGuideView(device, player) {
           h('span', { class: 'guide-channel-badges' },
             channel.hd && h('span', { class: 'badge hd' }, 'HD'),
             channel.atsc3 && h('span', { class: 'badge tag-atsc3' }, '3.0'),
+            channel.broadband && h('span', { class: 'badge tag-ott' }, 'OTT'),
             channel.drm && h('span', { class: 'badge tag-drm' }, 'DRM'),
           ),
         ),
@@ -1896,7 +1897,7 @@ function createGuideView(device, player) {
     // quietly drops it: the progress line below is only there while it is recording.
     details.replaceChildren(...[
       h('div', { class: 'guide-details-head' },
-        channelLogo(channel.virtual, channel.logo),
+        channelLogo(channel.logoFor ?? channel.virtual, channel.logo),
         h('h3', {}, event.title),
         event.rating && h('span', { class: 'badge' }, event.rating),
         h('button', { type: 'button', class: 'secondary', 'aria-label': 'Close details', onclick: () => details.close() }, '×'),

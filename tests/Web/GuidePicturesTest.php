@@ -138,6 +138,85 @@ class GuidePicturesTest extends TestCase
         ]);
     }
 
+    public function testAnAtsc3ChannelBorrowsTheLogoOfTheChannelItSimulcasts(): void
+    {
+        // A 3.0 service is numbered a hundred above the channel it carries, and the
+        // station's logo is filed under that lower number.
+        file_put_contents($this->directory . '/logos/2.1.png', 'pretend png');
+        $this->saveAtsc3('102.1', 'WPBT-HD');
+
+        $station = $this->guideChannelFor('102.1');
+
+        $this->assertTrue($station['logo']);
+        $this->assertSame('2.1', $station['logoFor']);
+    }
+
+    public function testAnAtsc3ChannelPrefersItsOwnLogo(): void
+    {
+        file_put_contents($this->directory . '/logos/104.1.png', 'pretend png');
+        file_put_contents($this->directory . '/logos/4.1.png', 'pretend png');
+        $this->saveAtsc3('104.1', 'WFOR-TV');
+
+        $station = $this->guideChannelFor('104.1');
+
+        $this->assertTrue($station['logo']);
+        // Nothing to redirect to: the page should ask for the number it already has.
+        $this->assertArrayNotHasKey('logoFor', $station);
+    }
+
+    public function testAnAtsc3ChannelWithNoCounterpartLogoHasNone(): void
+    {
+        $this->saveAtsc3('102.5', 'PBSWRLD');
+
+        $station = $this->guideChannelFor('102.5');
+
+        $this->assertFalse($station['logo']);
+        $this->assertArrayNotHasKey('logoFor', $station);
+    }
+
+    public function testAnOrdinaryChannelNeverBorrowsAnotherLogo(): void
+    {
+        // The borrowing is only ever right for a 3.0 simulcast. A broadcast channel that
+        // happens to be numbered above a hundred is a different station entirely.
+        file_put_contents($this->directory . '/logos/2.1.png', 'pretend png');
+        $this->guide->saveLineup(self::DEVICE, [
+            ['physical' => 29, 'program' => 3, 'virtual' => '6.1', 'name' => 'WTVJ', 'tsid' => 627, 'encrypted' => false, 'hd' => true],
+            ['physical' => 31, 'program' => 1, 'virtual' => '102.1', 'name' => 'Other', 'tsid' => 700, 'encrypted' => false, 'hd' => false],
+        ]);
+
+        $station = $this->guideChannelFor('102.1');
+
+        $this->assertFalse($station['logo']);
+        $this->assertArrayNotHasKey('logoFor', $station);
+    }
+
+    private function saveAtsc3(string $virtual, string $name): void
+    {
+        $this->guide->saveAtsc3Lineup(self::DEVICE, [[
+            'virtual'    => $virtual,
+            'name'       => $name,
+            'videoCodec' => 'HEVC',
+            'audioCodec' => 'AC4',
+            'drm'        => false,
+            'broadband'  => true,
+            'hd'         => false,
+        ]], GuideStore::ATSC3_SOURCE_SLT);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function guideChannelFor(string $virtual): array
+    {
+        foreach ($this->guideChannels() as $channel) {
+            if ($channel['virtual'] === $virtual) {
+                return $channel;
+            }
+        }
+
+        $this->fail("No channel $virtual in the guide");
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -153,6 +232,21 @@ class GuidePicturesTest extends TestCase
         $body = json_decode((string) $response->getContent(), true);
 
         return $body['channels'][0] ?? [];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function guideChannels(): array
+    {
+        $api = new Api(new Discovery(), [], null, $this->guide);
+
+        $response = $api->handle(Request::create(
+            '/api/guide?device=' . self::DEVICE . '&hours=6&from=' . (time() - 60),
+            'GET'
+        ));
+
+        return json_decode((string) $response->getContent(), true)['channels'] ?? [];
     }
 
     private function addEvent(string $title, ?int $start = null, int $eventId = 42): void
