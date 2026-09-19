@@ -2138,6 +2138,9 @@ function createGuideView(device, player) {
     button.textContent = '…';
 
     try {
+      // Reachable from the details modal as well as the row. The player sits behind
+      // the modal, which would otherwise stay up and keep the page inert.
+      details.close();
       await player.playAtsc3({ device: host, virtual: channel.virtual, name: channel.name });
     } catch (error) {
       showError(error);
