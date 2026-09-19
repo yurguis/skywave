@@ -1823,7 +1823,8 @@ function createGuideView(device, player) {
           // The badges are siblings of the name, not inside it: the name is what truncates,
           // and a badge within it was cut off along with the text it followed.
           h('span', { class: 'guide-channel-name' },
-            h('b', {}, channel.virtual), ' ', channel.name),
+            h('b', { class: 'guide-channel-number' }, channel.virtual),
+            h('span', { class: 'guide-channel-call' }, channel.name)),
           h('span', { class: 'guide-channel-badges' },
             channel.hd && h('span', { class: 'badge hd' }, 'HD'),
             channel.atsc3 && h('span', { class: 'badge tag-atsc3' }, '3.0'),
