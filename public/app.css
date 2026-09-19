@@ -639,8 +639,19 @@ details > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 }
 
 .channel-logo { width: 34px; height: 26px; object-fit: contain; flex: none; }
-.guide-channel-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.badge.hd { margin-left: 6px; padding: 0 5px; font-size: 10px; letter-spacing: .04em; }
+.guide-channel-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge.hd {
+  margin-left: 6px;
+  padding: 0 5px;
+  font-size: 10px;
+  letter-spacing: .04em;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+}
+
+/* Pinned to the right edge of every row so the badges line up as a column, and never
+   squeezed: a long station name shortens itself rather than pushing the badge out. */
+.guide-channel .badge.hd { margin-left: auto; flex: none; }
 
 /* What a recording is, at a glance. Tinted the same way the tuner badges are, so the list
    reads as colour rather than as another row of grey pills. */
