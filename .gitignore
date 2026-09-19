@@ -10,3 +10,8 @@
 # Certificates and keys, wherever they are put.
 *.pem
 *.key
+
+# Local-only ATSC 3.0 inspection tooling. Present in this working tree by choice;
+# never committed, and never copied into the Docker image.
+/src/Atsc3/
+/tools/atsc3.php
