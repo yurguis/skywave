@@ -677,6 +677,10 @@ details > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 }
 
 .channel-logo { width: 34px; height: 26px; object-fit: contain; flex: none; }
+
+/* A station with no logo keeps the space one would have taken, so the numbers and call
+   signs down the column start in the same place on every row. */
+.channel-logo-none { display: block; }
 /* Two lines rather than one truncated one. A three-digit channel plus a call sign
    ("104.1 WFOR-TV") never fit the width left beside the logo and the badges, so it breaks
    at the space instead. Clamped at two, so a long name still cannot grow the row: the
