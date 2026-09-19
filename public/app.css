@@ -639,7 +639,22 @@ details > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 }
 
 .channel-logo { width: 34px; height: 26px; object-fit: contain; flex: none; }
-.guide-channel-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Two lines rather than one truncated one. A three-digit channel plus a call sign
+   ("104.1 WFOR-TV") never fit the width left beside the logo and the badges, so it breaks
+   at the space instead. Clamped at two, so a long name still cannot grow the row: the
+   parent sets nowrap for everything else in the cell, hence the explicit normal. */
+.guide-channel-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.2;
+}
 .badge.hd {
   margin-left: 6px;
   padding: 0 5px;
@@ -651,22 +666,36 @@ details > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 
 /* Pinned to the right edge of every row so the badges line up as a column, and never
    squeezed: a long station name shortens itself rather than pushing the badge out. */
-.guide-channel-badges { display: flex; gap: 4px; margin-left: auto; flex: none; }
+/* Stacked rather than strung out. Three pills in a row ate most of a 170px column and left
+   the station name almost nothing. One column, sized to the widest so they read as a block,
+   and kept short enough that the row does not grow taller than every other row. A channel
+   with only an HD pill looks exactly as it did. */
+.guide-channel-badges {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 2px;
+  margin-left: auto;
+  flex: none;
+}
 /* One size for all three. The HD pill kept the smaller type and tighter padding it was
    given back when it sat alone against the channel name, which left it visibly shorter
    than the 3.0 and DRM pills once it had neighbours. The compact metrics win here, since
    three pills have to fit a 170px column. */
 .guide-channel-badges .badge {
   margin-left: 0;
-  padding: 0 5px;
-  font-size: 10px;
+  padding: 0 4px;
+  font-size: 9px;
+  line-height: 1.2;
   letter-spacing: .04em;
+  text-align: center;
 }
 
 /* What the row is, where it cannot simply be watched. ATSC 3.0 carries AC-4 audio that
    ffmpeg cannot decode, and every one of these is encrypted besides, so the row is listed
    greyed rather than offered. */
-.badge.tag-atsc3 { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); }
+.badge.tag-atsc3 { background: color-mix(in srgb, var(--amber) 20%, transparent); color: var(--amber); }
 .badge.tag-drm { background: color-mix(in srgb, var(--red) 15%, transparent); color: var(--red); }
 
 .guide-row.is-unsupported .guide-channel-name,
