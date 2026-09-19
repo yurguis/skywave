@@ -1478,8 +1478,10 @@ function createPlayer(panel) {
     await stop();
 
     current = null;
-    // No live edge to chase and nothing to record: neither button means anything here.
-    liveButton.hidden = true;
+    // These are live: the manifest is dynamic and the playlist omits an end list, so the
+    // live badge and its jump-to-live behave as they do for a tuner. Recording does not:
+    // nothing here can capture a stream that never came through the device.
+    liveButton.hidden = false;
     recordButton.hidden = true;
     panel.hidden = false;
     channelLabel.replaceChildren(...[
@@ -2104,22 +2106,29 @@ function createGuideView(device, player) {
    * over the internet can, without sound; an ordinary channel simply has no listings.
    */
   function emptyTrack(channel) {
-    if (channel.atsc3 && !(channel.streamUrl && !channel.drm)) {
-      return [h('span', {}, 'ATSC 3.0 — cannot be tuned here')];
-    }
+    const silent   = Boolean(channel.atsc3);
+    const playable = silent ? Boolean(channel.streamUrl) && !channel.drm : !channel.encrypted;
 
-    const silent = Boolean(channel.atsc3);
+    // Every empty row offers the same control in the same place, so the ones that cannot be
+    // played read as refused rather than as forgotten. The reason is on the button.
+    const reason = playable
+      ? `Watch ${channel.virtual} ${channel.name}${silent ? ' (no sound)' : ''}`
+      : (silent
+        ? `${channel.virtual} ${channel.name} is encrypted and cannot be played here`
+        : `${channel.virtual} ${channel.name} is encrypted`);
 
     return [
       h('button', {
         type: 'button',
         class: 'guide-empty-play',
-        disabled: !silent && Boolean(channel.encrypted),
-        title: silent ? `Watch ${channel.virtual} ${channel.name} (no sound)` : `Watch ${channel.virtual} ${channel.name}`,
-        'aria-label': `Watch ${channel.virtual} ${channel.name}${silent ? ', no sound' : ''}`,
+        disabled: !playable,
+        title: reason,
+        'aria-label': reason,
         onclick: (clickEvent) => (silent ? watchAtsc3 : watch)(channel, clickEvent.currentTarget),
       }, '▶'),
-      h('span', {}, silent ? 'ATSC 3.0 · no programme data' : 'No guide data'),
+      h('span', {}, silent
+        ? (playable ? 'ATSC 3.0 · no programme data' : 'ATSC 3.0 — cannot be tuned here')
+        : 'No guide data'),
     ];
   }
 
