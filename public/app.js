@@ -597,7 +597,7 @@ const ICON_PATHS = {
   play: 'M8 5v14l11-7z',
   pause: 'M6 5h4v14H6zM14 5h4v14h-4z',
   volume: 'M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z',
-  muted: 'M3 9v6h4l5 5V4L7 9H3zm13.6 3 2.7-2.7-1.4-1.4-2.7 2.7-2.7-2.7-1.4 1.4 2.7 2.7-2.7 2.7 1.4 1.4 2.7-2.7 2.7 2.7 1.4-1.4z',
+  muted: 'M3 9v6h4l5 5V4L7 9H3zm15.1 3 2.7-2.7-1.4-1.4-2.7 2.7-2.7-2.7-1.4 1.4 2.7 2.7-2.7 2.7 1.4 1.4 2.7-2.7 2.7 2.7 1.4-1.4z',
   captions: 'M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1zm7 0h-1.5v-.5h-2v3h2V13H18v1a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1z',
   record: 'M12 6a6 6 0 1 0 0 12a6 6 0 1 0 0-12z',
   stop: 'M6 6h12v12H6z',
@@ -826,6 +826,9 @@ function createPlayer(panel) {
     const silent = video.muted || video.volume === 0;
     setIcon(muteButton, silent ? 'muted' : 'volume', silent ? 'Unmute' : 'Mute');
     volumeSlider.value = String(silent ? 0 : video.volume);
+    // The filled part of the track is drawn by us, so it has to be told where to stop.
+    // Input events reach here too: setting the volume fires volumechange.
+    volumeSlider.style.setProperty('--level', String(silent ? 0 : video.volume));
   }
 
   function liveEdge() {
