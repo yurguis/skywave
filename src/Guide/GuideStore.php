@@ -119,8 +119,14 @@ class GuideStore
         return $channels;
     }
 
+    /** Stations the device's own lineup reports. */
+    public const ATSC3_SOURCE_LINEUP = 'lineup';
+
+    /** Stations read from the broadcast's Service List Table, which the lineup omits. */
+    public const ATSC3_SOURCE_SLT = 'slt';
+
     /**
-     * Replace the ATSC 3.0 stations known for a device.
+     * Replace the ATSC 3.0 stations known for a device, for one source only.
      *
      * Deliberately not in `channels`: that table drives scanning, tuning and recording, and
      * nothing here can tune ATSC 3.0. Putting them there would have the collector trying to
@@ -128,30 +134,35 @@ class GuideStore
      *
      * @param list<array<string, mixed>> $channels
      */
-    public function saveAtsc3Lineup(string $device, array $channels): void
+    public function saveAtsc3Lineup(string $device, array $channels, string $source = self::ATSC3_SOURCE_LINEUP): void
     {
         $now = time();
 
-        $this->transaction(function () use ($device, $channels, $now): void {
-            // The device's lineup is the whole truth for this device, so what it no longer
-            // reports should not linger.
-            $this->db->prepare('DELETE FROM atsc3_channels WHERE device = ?')->execute([$device]);
+        $this->transaction(function () use ($device, $channels, $now, $source): void {
+            // Each source is the whole truth for what it reports, and nothing more: clearing
+            // only its own rows lets a second source describe stations the first never
+            // mentions without the two erasing each other every few hours.
+            $this->db->prepare('DELETE FROM atsc3_channels WHERE device = ? AND source = ?')
+                ->execute([$device, $source]);
 
             $insert = $this->db->prepare(
-                'INSERT INTO atsc3_channels (device, virtual, name, video_codec, audio_codec, drm, hd, updated_at)
-                 VALUES (:device, :virtual, :name, :video, :audio, :drm, :hd, :now)'
+                'INSERT OR REPLACE INTO atsc3_channels
+                    (device, virtual, name, video_codec, audio_codec, drm, broadband, hd, source, updated_at)
+                 VALUES (:device, :virtual, :name, :video, :audio, :drm, :broadband, :hd, :source, :now)'
             );
 
             foreach ($channels as $channel) {
                 $insert->execute([
-                    'device'  => $device,
-                    'virtual' => (string) $channel['virtual'],
-                    'name'    => (string) $channel['name'],
-                    'video'   => $channel['videoCodec'] ?? null,
-                    'audio'   => $channel['audioCodec'] ?? null,
-                    'drm'     => empty($channel['drm']) ? 0 : 1,
-                    'hd'      => empty($channel['hd']) ? 0 : 1,
-                    'now'     => $now,
+                    'device'    => $device,
+                    'virtual'   => (string) $channel['virtual'],
+                    'name'      => (string) $channel['name'],
+                    'video'     => $channel['videoCodec'] ?? null,
+                    'audio'     => $channel['audioCodec'] ?? null,
+                    'drm'       => empty($channel['drm']) ? 0 : 1,
+                    'broadband' => empty($channel['broadband']) ? 0 : 1,
+                    'hd'        => empty($channel['hd']) ? 0 : 1,
+                    'source'    => $source,
+                    'now'       => $now,
                 ]);
             }
         });
@@ -185,11 +196,15 @@ class GuideStore
             'audio'    => null,
             'hd'       => (bool) $row['hd'],
             'drm'      => (bool) $row['drm'],
-            'atsc3'    => true,
+            // Delivered over the internet rather than purely over the air. Separate
+            // from protection: a station can be one, the other, both or neither.
+            'broadband' => (bool) ($row['broadband'] ?? false),
+            'atsc3'     => true,
             // What disables Watch in the page, which is what an encrypted station deserves.
             'encrypted'  => (bool) $row['drm'],
             'videoCodec' => $row['video_codec'],
             'audioCodec' => $row['audio_codec'],
+            'source'     => (string) ($row['source'] ?? self::ATSC3_SOURCE_LINEUP),
             'events'     => [],
         ], $statement === false ? [] : $statement->fetchAll());
     }
@@ -553,7 +568,9 @@ class GuideStore
                 video_codec TEXT,
                 audio_codec TEXT,
                 drm INTEGER NOT NULL DEFAULT 0,
+                broadband INTEGER NOT NULL DEFAULT 0,
                 hd INTEGER NOT NULL DEFAULT 0,
+                source TEXT NOT NULL DEFAULT \'lineup\',
                 updated_at INTEGER NOT NULL,
                 UNIQUE (device, virtual)
             );
@@ -566,6 +583,10 @@ class GuideStore
         // "IF NOT EXISTS" leaves a table that already exists alone, so a column added
         // after the first release has to be added by hand.
         $this->addMissingColumns('channels', ['hd' => 'INTEGER NOT NULL DEFAULT 0', 'audio' => 'TEXT']);
+        $this->addMissingColumns('atsc3_channels', [
+            'source'    => "TEXT NOT NULL DEFAULT 'lineup'",
+            'broadband' => 'INTEGER NOT NULL DEFAULT 0',
+        ]);
     }
 
     /**

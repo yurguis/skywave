@@ -114,6 +114,65 @@ class Atsc3LineupTest extends TestCase
         $this->assertNotContains($this->store->getLineup(self::DEVICE)[0]['id'], array_column($this->store->getAtsc3Lineup(self::DEVICE), 'id'));
     }
 
+    public function testASecondSourceDoesNotEraseTheFirst(): void
+    {
+        // The device's lineup omits the unencrypted stations entirely, so they are read
+        // from the broadcast instead. The guide re-saves the lineup every few hours, and
+        // that must not take the others with it.
+        $this->save();
+        $this->store->saveAtsc3Lineup(
+            self::DEVICE,
+            [$this->station('2.1', 'WPBT-HD', drm: false)],
+            GuideStore::ATSC3_SOURCE_SLT
+        );
+
+        $this->save();
+
+        $virtuals = array_column($this->store->getAtsc3Lineup(self::DEVICE), 'virtual');
+        // Sorted as text: PHP orders numeric-looking strings by value otherwise, which
+        // would put 2.1 before 104.1 and make the expectation read oddly.
+        sort($virtuals, SORT_STRING);
+
+        $this->assertSame(['104.1', '2.1'], $virtuals);
+    }
+
+    public function testASourceStillReplacesItsOwnRows(): void
+    {
+        $this->store->saveAtsc3Lineup(self::DEVICE, [$this->station('2.1', 'WPBT-HD')], GuideStore::ATSC3_SOURCE_SLT);
+        $this->store->saveAtsc3Lineup(self::DEVICE, [$this->station('2.5', 'PBSWRLD')], GuideStore::ATSC3_SOURCE_SLT);
+
+        $this->assertSame(['2.5'], array_column($this->store->getAtsc3Lineup(self::DEVICE), 'virtual'));
+    }
+
+    public function testEachStationSaysWhereItCameFrom(): void
+    {
+        $this->save();
+        $this->store->saveAtsc3Lineup(self::DEVICE, [$this->station('2.1', 'WPBT-HD')], GuideStore::ATSC3_SOURCE_SLT);
+
+        $source = [];
+
+        foreach ($this->store->getAtsc3Lineup(self::DEVICE) as $station) {
+            $source[$station['virtual']] = $station['source'];
+        }
+
+        $this->assertSame(['104.1' => 'lineup', '2.1' => 'slt'], $source);
+    }
+
+    public function testAnUnencryptedStationIsNotMarkedDrm(): void
+    {
+        $this->store->saveAtsc3Lineup(
+            self::DEVICE,
+            [$this->station('2.1', 'WPBT-HD', drm: false)],
+            GuideStore::ATSC3_SOURCE_SLT
+        );
+
+        $station = $this->guideChannel('2.1');
+
+        $this->assertFalse($station['drm']);
+        $this->assertTrue($station['atsc3']);
+        $this->assertSame([], $station['events']);
+    }
+
     /**
      * @param list<array<string, mixed>>|null $stations
      */
@@ -125,7 +184,7 @@ class Atsc3LineupTest extends TestCase
     /**
      * @return array<string, mixed>
      */
-    private function station(string $virtual, string $name, bool $drm = true): array
+    private function station(string $virtual, string $name, bool $drm = true, bool $broadband = false): array
     {
         return [
             'virtual'    => $virtual,
@@ -133,8 +192,32 @@ class Atsc3LineupTest extends TestCase
             'videoCodec' => 'HEVC',
             'audioCodec' => 'AC4',
             'drm'        => $drm,
+            'broadband'  => $broadband,
             'hd'         => true,
         ];
+    }
+
+    public function testAStationDeliveredOverBroadbandSaysSo(): void
+    {
+        // Independent of protection: a station can be unencrypted and still carry part of
+        // itself over the internet, which is what separates these from the rest.
+        $this->store->saveAtsc3Lineup(
+            self::DEVICE,
+            [$this->station('102.1', 'WPBT-HD', drm: false, broadband: true)],
+            GuideStore::ATSC3_SOURCE_SLT
+        );
+
+        $station = $this->guideChannel('102.1');
+
+        $this->assertTrue($station['broadband']);
+        $this->assertFalse($station['drm']);
+    }
+
+    public function testAnOrdinaryStationIsNotMarkedBroadband(): void
+    {
+        $this->save();
+
+        $this->assertFalse($this->guideChannel('104.1')['broadband']);
     }
 
     /**

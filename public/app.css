@@ -751,6 +751,10 @@ details > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 .badge.tag-atsc3 { background: color-mix(in srgb, var(--amber) 20%, transparent); color: var(--amber); }
 .badge.tag-drm { background: color-mix(in srgb, var(--red) 15%, transparent); color: var(--red); }
 
+/* Carried over the internet rather than purely over the air. Neutral on purpose: green
+   would read as "available", and these cannot be played either. */
+.badge.tag-ott { background: color-mix(in srgb, var(--neutral) 22%, transparent); color: var(--neutral); }
+
 .guide-row.is-unsupported .guide-channel-name,
 .guide-row.is-unsupported .guide-empty { color: var(--muted); }
 .guide-row.is-unsupported .channel-logo { opacity: .55; }
