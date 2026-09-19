@@ -159,10 +159,18 @@ function programmeArtwork(title, exists) {
   return art;
 }
 
-function channelLogo(virtual, exists = true) {
+/**
+ * An empty box the size of a logo. In a list the box has to be there whether or not the
+ * station has a picture, or the rows without one start 40px left of the rest.
+ */
+function logoPlaceholder() {
+  return h('span', { class: 'channel-logo channel-logo-none', 'aria-hidden': 'true' });
+}
+
+function channelLogo(virtual, exists = true, reserveSpace = false) {
   // Six channels here have no logo and never will; without this they were asked for
   // hundreds of times a day, every one a 404.
-  if (!exists) return null;
+  if (!exists) return reserveSpace ? logoPlaceholder() : null;
 
   const logo = h('img', {
     class: 'channel-logo',
@@ -171,7 +179,15 @@ function channelLogo(virtual, exists = true) {
     loading: 'lazy',
   });
 
-  logo.addEventListener('error', () => logo.remove());
+  // A logo that is on disk but will not decode would otherwise take the row's alignment
+  // with it, so in a list it leaves the box behind.
+  logo.addEventListener('error', () => {
+    if (reserveSpace) {
+      logo.replaceWith(logoPlaceholder());
+    } else {
+      logo.remove();
+    }
+  });
 
   return logo;
 }
@@ -1819,7 +1835,7 @@ function createGuideView(device, player) {
       h('div', { class: 'guide-row guide-header' }, h('div', { class: 'guide-channel' }), h('div', { class: 'guide-track' }, ticks, nowMarker())),
       ...channels.map((channel) => h('div', { class: channel.atsc3 ? 'guide-row is-unsupported' : 'guide-row' },
         h('div', { class: 'guide-channel', title: `${channel.virtual} ${channel.name}` },
-          channelLogo(channel.virtual, channel.logo),
+          channelLogo(channel.virtual, channel.logo, true),
           // The badges are siblings of the name, not inside it: the name is what truncates,
           // and a badge within it was cut off along with the text it followed.
           h('span', { class: 'guide-channel-name' },
