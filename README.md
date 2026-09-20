@@ -134,6 +134,23 @@ php tools/guide.php run --interval=240     # keep every known device up to date
 
 In Docker the `guide` service runs `run` and shares the database volume with the web UI.
 
+### ATSC 3.0
+
+Channels broadcast in ATSC 3.0 are listed with the rest, badged `3.0` and either `DRM` or
+`OTT`. They carry no guide tables of their own, so they show the programmes of the 1.0
+channel they simulcast: 106.1 shows what 6.1 is showing. A station with no counterpart on
+air stays empty rather than being given something invented.
+
+Most cannot be played. An encrypted station is refused: the device will not serve it to
+anything uncertified. A station whose broadcaster sends the video over the internet can be
+watched, when the broadcast says where, and plays **without sound** — its audio is AC-4,
+which neither ffmpeg nor any browser here decodes. Those need no tuner at all, so they
+never compete with a recording. None of them can be recorded.
+
+A row with no programmes never opens the details panel, so it carries a play button where
+the listings would be. The same button appears on 1.0 channels that broadcast no guide
+data, which otherwise could not be watched at all.
+
 ### Station logos
 
 A broadcast names its channels but never pictures them, so logos come from the device
@@ -405,17 +422,16 @@ anyone on the path.
 - **One viewer per tuner.** Two people cannot share a tuner, so a four-tuner device serves
   four programs at once, recordings included. Skywave picks a free tuner and says so
   plainly when there is none.
-- **ATSC 1.0 only.** ATSC 3.0 channels appear in a scan but cannot be watched or recorded:
-  the device does not send them as MPEG-TS.
+- **ATSC 3.0 is listed, mostly not watchable.** Encrypted stations cannot be played at
+  all. The ones a broadcaster delivers over the internet play without sound. None can be
+  recorded. See [ATSC 3.0](#atsc-30).
 - **Nothing is ever deleted for you.** The Recordings tab warns when the drive runs low and
   refuses to start a recording below 2 GB free, but making room is yours to do.
 - **Every conversion runs on this machine.** HDHomeRun tuners do not transcode, so each
   viewer watching a different program costs CPU here.
-- **One showing at a time.** Recordings are scheduled per showing; there is no series rule
-  yet.
-- **The guide comes from the broadcast**, so it reaches about 12 hours ahead and covers
-  only what your antenna receives. Station logos are the one thing fetched from the
-  internet, once, and then served locally.
+- **The guide comes from the broadcast**, so it covers only what your antenna receives:
+  about twelve hours on a typical channel, a little over a day at the furthest. Station
+  logos and programme pictures are fetched from the internet once and then served locally.
 
 ## License
 
