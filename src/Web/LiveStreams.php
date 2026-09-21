@@ -98,6 +98,17 @@ class LiveStreams
     }
 
     /**
+     * Whether a station whose audio is AC-4 can be played with sound.
+     *
+     * The compose overlay sets FFMPEG_AC4 whether or not anyone ran the build, so the
+     * variable alone proves nothing: the binary has to be there to be believed.
+     */
+    public function canDecodeAc4(): bool
+    {
+        return $this->ac4Ffmpeg !== '' && is_executable($this->ac4Ffmpeg);
+    }
+
+    /**
      * Watch a program on a tuned tuner, starting its transcoder if nobody else is.
      * Another program already streaming from the same tuner is stopped first.
      *
@@ -447,7 +458,7 @@ class LiveStreams
      */
     private function videoOnlyArguments(string $source, string $directory): array
     {
-        $sound   = $this->ac4Ffmpeg !== '' && is_executable($this->ac4Ffmpeg);
+        $sound   = $this->canDecodeAc4();
         $top     = $this->renditions[0];
         $count   = count($this->renditions);
         $graph   = ['[0:v:0]split=' . $count . implode('', array_map(fn (int $i) => "[s$i]", array_keys($this->renditions)))];
