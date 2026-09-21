@@ -45,14 +45,17 @@ class LiveStreams
     /** @var int[] picture heights, tallest first */
     private array $renditions;
     private string $ffmpeg;
+    /** An ffmpeg that can decode AC-4, or '' when nobody built one. */
+    private string $ac4Ffmpeg;
     private int $rewindSeconds;
 
     /**
-     * @param int[] $renditions    picture heights to offer, e.g. [720, 480, 360]; players switch
-     *                             between them as the connection allows
-     * @param int   $rewindMinutes how far back viewers can go in a live stream
+     * @param int[]  $renditions    picture heights to offer, e.g. [720, 480, 360]; players switch
+     *                              between them as the connection allows
+     * @param int    $rewindMinutes how far back viewers can go in a live stream
+     * @param string $ac4Ffmpeg     a second binary, used only for stations whose audio is AC-4
      */
-    public function __construct(string $directory, int $maxStreams = 2, int $viewerTimeout = 30, array $renditions = [720, 480, 360], string $ffmpeg = 'ffmpeg', int $rewindMinutes = 5)
+    public function __construct(string $directory, int $maxStreams = 2, int $viewerTimeout = 30, array $renditions = [720, 480, 360], string $ffmpeg = 'ffmpeg', int $rewindMinutes = 5, string $ac4Ffmpeg = '')
     {
         $heights = array_values(array_unique(array_map(fn ($height) => max(144, min(2160, (int) $height)), $renditions)));
         rsort($heights);
@@ -62,12 +65,13 @@ class LiveStreams
         $this->viewerTimeout = max(5, $viewerTimeout);
         $this->renditions    = array_slice($heights === [] ? [720] : $heights, 0, self::MAX_RENDITIONS);
         $this->ffmpeg        = $ffmpeg;
+        $this->ac4Ffmpeg     = $ac4Ffmpeg;
         $this->rewindSeconds = max(1, $rewindMinutes) * 60;
     }
 
     /**
-     * Settings from HLS_DIR, MAX_STREAMS, HLS_VIEWER_TIMEOUT, HLS_RENDITIONS, HLS_DVR_MINUTES
-     * and FFMPEG.
+     * Settings from HLS_DIR, MAX_STREAMS, HLS_VIEWER_TIMEOUT, HLS_RENDITIONS, HLS_DVR_MINUTES,
+     * FFMPEG and FFMPEG_AC4.
      */
     public static function fromEnvironment(): self
     {
@@ -83,7 +87,8 @@ class LiveStreams
             (int) $env('HLS_VIEWER_TIMEOUT', '30'),
             array_map('intval', array_filter(array_map('trim', explode(',', $env('HLS_RENDITIONS', '720,480,360'))), 'ctype_digit')),
             $env('FFMPEG', 'ffmpeg'),
-            (int) $env('HLS_DVR_MINUTES', '5')
+            (int) $env('HLS_DVR_MINUTES', '5'),
+            $env('FFMPEG_AC4', '')
         );
     }
 
@@ -424,15 +429,20 @@ class LiveStreams
     }
 
     /**
-     * ffmpeg arguments for a manifest played without sound.
+     * ffmpeg arguments for a manifest played from the internet.
      *
-     * No deinterlacing: these are sent progressive, and estdif would only soften them. No
-     * audio at all, because AC-4 has no decoder here, so the variant map names video alone.
+     * No deinterlacing: these are sent progressive, and estdif would only soften them.
+     *
+     * Whether there is sound depends on the binary. These stations carry AC-4, which no
+     * released ffmpeg decodes, so by default the audio is dropped and the variant map
+     * names video alone. When FFMPEG_AC4 points at a build that does decode it, that
+     * binary runs instead and brings the sound with it.
      *
      * @return string[]
      */
     private function videoOnlyArguments(string $source, string $directory): array
     {
+        $sound   = $this->ac4Ffmpeg !== '';
         $top     = $this->renditions[0];
         $count   = count($this->renditions);
         $graph   = ['[0:v:0]split=' . $count . implode('', array_map(fn (int $i) => "[s$i]", array_keys($this->renditions)))];
@@ -446,15 +456,23 @@ class LiveStreams
                 '-map', "[v$i]",
                 "-maxrate:v:$i", "{$maxrate}k", "-bufsize:v:$i", ($maxrate * 2) . 'k',
             ]);
-            $streams[] = "v:$i";
+
+            if ($sound) {
+                $outputs = array_merge($outputs, ['-map', '0:a:0', "-b:a:$i", $height >= 480 ? '128k' : '96k']);
+            }
+
+            $streams[] = $sound ? "v:$i,a:$i" : "v:$i";
         }
 
+        // Stereo, like every other path a browser plays: its media source does not reliably
+        // decode surround. These carry AC-4 in stereo anyway, so nothing is lost.
+        $audio = $sound ? ['-c:a', 'aac', '-ac', '2'] : ['-an'];
+
         return array_merge([
-            $this->ffmpeg, '-hide_banner', '-nostdin', '-loglevel', 'error',
+            $sound ? $this->ac4Ffmpeg : $this->ffmpeg, '-hide_banner', '-nostdin', '-loglevel', 'error',
             '-i', $source,
             '-filter_complex', implode(';', $graph),
-        ], $outputs, [
-            '-an',
+        ], $outputs, $audio, [
             '-fps_mode', 'passthrough',
             '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-crf', '21',
             '-force_key_frames', 'expr:gte(t,n_forced*2)', '-sc_threshold', '0',

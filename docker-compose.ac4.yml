@@ -1,0 +1,35 @@
+# Optional overlay: play the ATSC 3.0 broadband stations with sound.
+#
+# Their audio is Dolby AC-4, which no released ffmpeg decodes, so these stations
+# otherwise play as silent video. Building a decoder is opt-in and stays on this
+# machine; read docker/ac4/README.md for what building it commits you to.
+#
+#   docker build -o data/ac4 -f docker/ac4/Dockerfile docker/ac4
+#   docker compose -f docker-compose.yml -f docker-compose.ac4.yml up -d
+#
+# or name both files once in .env and keep using plain "docker compose":
+#
+#   echo 'COMPOSE_FILE=docker-compose.yml:docker-compose.ac4.yml' >> .env
+#
+# On Docker Desktop, chain the macOS override as well:
+#
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.macos.yml:docker-compose.ac4.yml
+#
+# Only the web service gets this. Recordings never need it: these stations cannot
+# be recorded, and the guide service does not transcode.
+
+services:
+  web:
+    environment:
+      # A second binary, used only for the AC-4 stations. Every other channel and
+      # every recording keeps using the ffmpeg in the image, which is far newer:
+      # the patch exists only for 6.1, and nothing else should be dragged back two
+      # major versions to gain sound on two stations.
+      #
+      # The path must not contain the string "ffmpeg" anywhere but the filename.
+      # Recording derives its probe binary with str_replace('ffmpeg', 'ffprobe',
+      # ...), which rewrites every occurrence, so a directory named ffmpeg-ac4
+      # would yield a probe path that does not exist.
+      FFMPEG_AC4: /opt/ac4/bin/ffmpeg
+    volumes:
+      - "./data/ac4:/opt/ac4:ro"

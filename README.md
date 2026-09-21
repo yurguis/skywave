@@ -144,8 +144,9 @@ air stays empty rather than being given something invented.
 Most cannot be played. An encrypted station is refused: the device will not serve it to
 anything uncertified. A station whose broadcaster sends the video over the internet can be
 watched, when the broadcast says where, and plays **without sound** — its audio is AC-4,
-which neither ffmpeg nor any browser here decodes. Those need no tuner at all, so they
-never compete with a recording. None of them can be recorded.
+which no released ffmpeg decodes. You can build one yourself; see
+[AC-4 audio](#ac-4-audio). Those need no tuner at all, so they never compete with a
+recording. None of them can be recorded.
 
 A row with no programmes never opens the details panel, so it carries a play button where
 the listings would be. The same button appears on 1.0 channels that broadcast no guide
@@ -369,6 +370,27 @@ docker compose up -d --build
 
 On macOS, also allow Docker in System Settings → Privacy & Security → Local Network,
 then restart Docker Desktop; without it, connections to tuners fail with "no route to host".
+
+### AC-4 audio
+
+ATSC 3.0 stations carry Dolby AC-4, which no released ffmpeg decodes, so the ones that can
+be watched at all play silently. A decoder was written for ffmpeg in 2020 and never merged.
+You can build it yourself, for yourself:
+
+```bash
+docker build -o data/ac4 -f docker/ac4/Dockerfile docker/ac4
+echo 'COMPOSE_FILE=docker-compose.yml:docker-compose.ac4.yml' >> .env
+docker compose up -d
+```
+
+Only those stations use it. Every other channel and every recording keeps the ffmpeg in the
+image, which is several major versions newer: the patch exists only for 6.1, and nothing
+else should be dragged back that far to gain sound on a couple of stations.
+
+The recipe is committed here; the result never is. It is patent-encumbered and cannot be
+redistributed, and the patch was declined by ffmpeg as unfinished, so treat what it produces
+as unverified. [docker/ac4/README.md](docker/ac4/README.md) sets out what building it
+commits you to. Skip it and nothing changes — those stations carry on playing silently.
 
 ### HTTPS
 
