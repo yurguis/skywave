@@ -1474,11 +1474,18 @@ function createPlayer(panel) {
    * none is found or freed. Its audio is AC-4, which only a purpose-built ffmpeg decodes:
    * the server says whether it has one, and the picture plays silently when it does not.
    * Polling is the same as any other session once it has started.
+   *
+   * It carries no listings of its own and borrows those of the channel a hundred below,
+   * which the guide has already worked out; its logo is filed under that number too. Once
+   * the player is told which channel to ask about, the rest of the overlay behaves as it
+   * does for a tuner.
    */
-  async function playAtsc3({ device, virtual, name, sound = false }) {
+  async function playAtsc3({ device, virtual, name, sound = false, logo = false, logoFor = null }) {
     await stop();
 
-    current = null;
+    // No tuner, and no program number either: the guide row for one of these carries none,
+    // so it is found by its virtual channel alone.
+    current = { host: device, tunerIndex: null, program: { number: null, virtualChannel: virtual } };
     // These are live: the manifest is dynamic and the playlist omits an end list, so the
     // live badge and its jump-to-live behave as they do for a tuner. Recording does not:
     // nothing here can capture a stream that never came through the device.
@@ -1486,12 +1493,13 @@ function createPlayer(panel) {
     recordButton.hidden = true;
     panel.hidden = false;
     channelLabel.replaceChildren(...[
-      channelLogo(virtual),
+      channelLogo(logoFor ?? virtual, logo),
       h('span', {}, sound ? `${virtual} ${name}` : `${virtual} ${name} · no sound`),
     ].filter(Boolean));
     programLabel.textContent = '';
     spinner.hidden = false;
     setStatus('Starting the transcoder…');
+    loadProgramInfo();
     panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
     try {
@@ -2145,7 +2153,14 @@ function createGuideView(device, player) {
       // Reachable from the details modal as well as the row. The player sits behind
       // the modal, which would otherwise stay up and keep the page inert.
       details.close();
-      await player.playAtsc3({ device: host, virtual: channel.virtual, name: channel.name, sound: Boolean(channel.sound) });
+      await player.playAtsc3({
+        device: host,
+        virtual: channel.virtual,
+        name: channel.name,
+        sound: Boolean(channel.sound),
+        logo: Boolean(channel.logo),
+        logoFor: channel.logoFor ?? null,
+      });
     } catch (error) {
       showError(error);
     } finally {
