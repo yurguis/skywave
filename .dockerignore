@@ -20,3 +20,6 @@ test.php
 # never committed, and never copied into the Docker image.
 src/Atsc3
 tools/atsc3.php
+
+# Locally built AC-4 ffmpeg; the recipe is committed, the binary never is.
+data/ac4/

@@ -1471,10 +1471,11 @@ function createPlayer(panel) {
    */
   /**
    * An ATSC 3.0 station whose media is served over the internet. No tuner is involved, so
-   * none is found or freed, and nothing here can decode its AC-4 audio: the picture plays
-   * silently. Polling is the same as any other session once it has started.
+   * none is found or freed. Its audio is AC-4, which only a purpose-built ffmpeg decodes:
+   * the server says whether it has one, and the picture plays silently when it does not.
+   * Polling is the same as any other session once it has started.
    */
-  async function playAtsc3({ device, virtual, name }) {
+  async function playAtsc3({ device, virtual, name, sound = false }) {
     await stop();
 
     current = null;
@@ -1486,7 +1487,7 @@ function createPlayer(panel) {
     panel.hidden = false;
     channelLabel.replaceChildren(...[
       channelLogo(virtual),
-      h('span', {}, `${virtual} ${name} · no sound`),
+      h('span', {}, sound ? `${virtual} ${name}` : `${virtual} ${name} · no sound`),
     ].filter(Boolean));
     programLabel.textContent = '';
     spinner.hidden = false;
@@ -1893,7 +1894,7 @@ function createGuideView(device, player) {
         h('div', { class: 'guide-track' },
           // A row with no programmes never opens the details panel, so its watch button
           // is out of reach. Anything that can be played gets one here instead: an
-          // internet-delivered station silently, an ordinary channel from its tuner.
+          // internet-delivered station, an ordinary channel from its tuner.
           channel.events.length === 0 && h('div', { class: 'guide-empty' }, ...emptyTrack(channel)),
           channel.events.map((event) => {
             const left = Math.max(0, (event.start - start) / span) * 100;
@@ -2103,17 +2104,20 @@ function createGuideView(device, player) {
   /**
    * What an empty row offers: a way to watch it where there is one, and a reason where
    * there is not. An encrypted ATSC 3.0 station cannot be tuned here at all; one delivered
-   * over the internet can, without sound; an ordinary channel simply has no listings.
+   * over the internet can, with sound only where the server has an AC-4 decoder; an
+   * ordinary channel simply has no listings.
    */
   function emptyTrack(channel) {
-    const silent   = Boolean(channel.atsc3);
-    const playable = silent ? Boolean(channel.streamUrl) && !channel.drm : !channel.encrypted;
+    const atsc3     = Boolean(channel.atsc3);
+    const playable  = atsc3 ? Boolean(channel.streamUrl) && !channel.drm : !channel.encrypted;
+    // Only worth saying when it is true. Every other channel has sound and never mentions it.
+    const soundless = atsc3 && !channel.sound;
 
     // Every empty row offers the same control in the same place, so the ones that cannot be
     // played read as refused rather than as forgotten. The reason is on the button.
     const reason = playable
-      ? `Watch ${channel.virtual} ${channel.name}${silent ? ' (no sound)' : ''}`
-      : (silent
+      ? `Watch ${channel.virtual} ${channel.name}${soundless ? ' (no sound)' : ''}`
+      : (atsc3
         ? `${channel.virtual} ${channel.name} is encrypted and cannot be played here`
         : `${channel.virtual} ${channel.name} is encrypted`);
 
@@ -2124,9 +2128,9 @@ function createGuideView(device, player) {
         disabled: !playable,
         title: reason,
         'aria-label': reason,
-        onclick: (clickEvent) => (silent ? watchAtsc3 : watch)(channel, clickEvent.currentTarget),
+        onclick: (clickEvent) => (atsc3 ? watchAtsc3 : watch)(channel, clickEvent.currentTarget),
       }, '▶'),
-      h('span', {}, silent
+      h('span', {}, atsc3
         ? (playable ? 'ATSC 3.0 · no programme data' : 'ATSC 3.0 — cannot be tuned here')
         : 'No guide data'),
     ];
@@ -2141,7 +2145,7 @@ function createGuideView(device, player) {
       // Reachable from the details modal as well as the row. The player sits behind
       // the modal, which would otherwise stay up and keep the page inert.
       details.close();
-      await player.playAtsc3({ device: host, virtual: channel.virtual, name: channel.name });
+      await player.playAtsc3({ device: host, virtual: channel.virtual, name: channel.name, sound: Boolean(channel.sound) });
     } catch (error) {
       showError(error);
     } finally {

@@ -909,7 +909,8 @@ class Api
     }
 
     /**
-     * Mark what actually has a picture, so the page never asks for one that does not exist.
+     * Mark what the page cannot work out for itself: which channels have a picture on
+     * disk, and whether an ATSC 3.0 station can be played with sound.
      *
      * @param list<array<string, mixed>> $channels
      * @return list<array<string, mixed>>
@@ -918,8 +919,10 @@ class Api
     {
         $logos   = ChannelLogos::fromEnvironment();
         $artwork = ProgrammeArtwork::fromEnvironment();
+        // Asked once rather than per channel: the answer is the same for all of them.
+        $sound = LiveStreams::fromEnvironment()->canDecodeAc4();
 
-        return array_map(static function (array $channel) use ($logos, $artwork): array {
+        return array_map(static function (array $channel) use ($logos, $artwork, $sound): array {
             $channel['logo'] = $logos->pathFor((string) $channel['virtual']) !== null;
 
             // An ATSC 3.0 service simulcasts the channel a hundred below it, and the
@@ -933,6 +936,12 @@ class Api
                     $channel['logo']    = true;
                     $channel['logoFor'] = $counterpart;
                 }
+            }
+
+            // Only these carry AC-4. Every other channel has sound and never says so, so
+            // the flag is absent rather than true for them.
+            if ($channel['atsc3'] ?? false) {
+                $channel['sound'] = $sound;
             }
 
             $channel['events'] = array_map(static function (array $event) use ($artwork): array {
