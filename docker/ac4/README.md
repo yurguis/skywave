@@ -9,7 +9,7 @@ Two commands:
 
 ```sh
 docker build -o data/ac4 -f docker/ac4/Dockerfile docker/ac4
-docker compose -f docker-compose.yml -f docker-compose.ac4.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.ac4.yml up -d --build
 ```
 
 Or name both files once in `.env` and carry on using plain `docker compose`:

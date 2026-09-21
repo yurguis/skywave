@@ -5,7 +5,7 @@
 # machine; read docker/ac4/README.md for what building it commits you to.
 #
 #   docker build -o data/ac4 -f docker/ac4/Dockerfile docker/ac4
-#   docker compose -f docker-compose.yml -f docker-compose.ac4.yml up -d
+#   docker compose -f docker-compose.yml -f docker-compose.ac4.yml up -d --build
 #
 # or name both files once in .env and keep using plain "docker compose":
 #

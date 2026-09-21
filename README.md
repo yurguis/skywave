@@ -380,7 +380,7 @@ You can build it yourself, for yourself:
 ```bash
 docker build -o data/ac4 -f docker/ac4/Dockerfile docker/ac4
 echo 'COMPOSE_FILE=docker-compose.yml:docker-compose.ac4.yml' >> .env
-docker compose up -d
+docker compose up -d --build
 ```
 
 Only those stations use it. Every other channel and every recording keeps the ffmpeg in the
@@ -445,8 +445,9 @@ anyone on the path.
   four programs at once, recordings included. Skywave picks a free tuner and says so
   plainly when there is none.
 - **ATSC 3.0 is listed, mostly not watchable.** Encrypted stations cannot be played at
-  all. The ones a broadcaster delivers over the internet play without sound. None can be
-  recorded. See [ATSC 3.0](#atsc-30).
+  all. The ones a broadcaster delivers over the internet play without sound, unless you
+  build a decoder yourself. None can be recorded. See [ATSC 3.0](#atsc-30) and
+  [AC-4 audio](#ac-4-audio).
 - **Nothing is ever deleted for you.** The Recordings tab warns when the drive runs low and
   refuses to start a recording below 2 GB free, but making room is yours to do.
 - **Every conversion runs on this machine.** HDHomeRun tuners do not transcode, so each
