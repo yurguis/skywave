@@ -438,11 +438,16 @@ class LiveStreams
      * names video alone. When FFMPEG_AC4 points at a build that does decode it, that
      * binary runs instead and brings the sound with it.
      *
+     * The binary has to actually be there. The compose overlay sets FFMPEG_AC4 whether or
+     * not anyone ran the build, so trusting the variable alone would launch ffmpeg from an
+     * empty mount and leave these stations playing nothing at all, rather than falling back
+     * to the silent video they managed before.
+     *
      * @return string[]
      */
     private function videoOnlyArguments(string $source, string $directory): array
     {
-        $sound   = $this->ac4Ffmpeg !== '';
+        $sound   = $this->ac4Ffmpeg !== '' && is_executable($this->ac4Ffmpeg);
         $top     = $this->renditions[0];
         $count   = count($this->renditions);
         $graph   = ['[0:v:0]split=' . $count . implode('', array_map(fn (int $i) => "[s$i]", array_keys($this->renditions)))];
