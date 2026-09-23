@@ -838,24 +838,16 @@ details > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 .recordings { display: grid; }
 .recordings p { margin: 8px 0 0; }
 
+/* Only Series uses these now: a rule is a setting rather than a record, so it stays a card
+   while Recorded and Scheduled are tables. Two columns, because a rule has no date of its
+   own -- it stands until cancelled. */
 .recording {
   display: grid;
-  grid-template-columns: 170px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
   padding: 10px 0;
   border-bottom: 1px solid var(--border);
-}
-
-/* A recording shows its poster between the date and the title. Rows without one keep the
-   empty column: a ragged left edge reads worse than a gap. */
-.recording.with-art { grid-template-columns: 170px 46px minmax(0, 1fr) auto; }
-
-.recording .art {
-  width: 46px;
-  aspect-ratio: 2 / 3;
-  border-radius: 4px;
-  object-fit: cover;
 }
 
 .recording:last-child { border-bottom: 0; }
@@ -902,13 +894,62 @@ button.record.is-recording,
 .series-rule { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
 .series-rule .series-when { color: var(--muted); font-size: 12.5px; }
 
+/* Recorded and Scheduled are many rows of the same fields, worth sorting and filtering, so
+   they are tables. Series stays a card list above: a rule is a setting, not a record. */
+
+.list-filter {
+  padding: 6px 10px;
+  min-width: 0;
+  width: 200px;
+  max-width: 100%;
+}
+
+.list-table { font-size: 13px; }
+.list-table th, .list-table td { padding: 8px 10px; vertical-align: middle; }
+.list-table td:first-child, .list-table th:first-child { padding-left: 0; }
+.list-table td:last-child, .list-table th:last-child { padding-right: 0; }
+.list-table tbody tr:last-child td { border-bottom: 0; }
+
+/* The header sorts on click, so it has to look and behave like a control. */
+.list-table th .sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.list-table th .sort:hover { color: var(--text); }
+.list-table th.sorted { color: var(--text); }
+.list-table th .arrow { font-size: 9px; }
+
+/* The picture and the title read as one thing, so they share a cell. */
+.list-table .cell-show { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.list-table .cell-show .art { width: 34px; aspect-ratio: 2 / 3; border-radius: 3px; object-fit: cover; flex: none; }
+.list-table .cell-show .name { display: grid; gap: 2px; min-width: 0; }
+.list-table .cell-show .title { font-weight: 500; }
+.list-table .cell-when { white-space: nowrap; }
+.list-table .cell-size, .list-table .cell-length { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.list-table .cell-actions { text-align: right; }
+.list-table .cell-actions > * { vertical-align: middle; }
+.list-table .actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+
+/* A narrow screen keeps what identifies a row and drops what can be inferred. */
+@media (max-width: 760px) {
+  .list-table .drop-narrow { display: none; }
+}
+
+@media (max-width: 520px) {
+  .list-table .cell-show .art { display: none; }
+  .list-table .actions { justify-content: flex-start; }
+}
+
 @media (max-width: 520px) {
   .recording { grid-template-columns: minmax(0, 1fr); }
-
-  /* Narrow enough that the poster sits beside the title and everything else spans both. */
-  .recording.with-art { grid-template-columns: 46px minmax(0, 1fr); }
-  .recording.with-art .when,
-  .recording.with-art .actions { grid-column: 1 / -1; }
 }
 
 /* TVmaze asks for a link back in return for the data, and the licence speaks of crediting
