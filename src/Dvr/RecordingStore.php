@@ -282,6 +282,9 @@ class RecordingStore
             'stopsAt'        => 'stops_at',
             'reservation'    => 'reservation',
             'stopRequested'  => 'stop_requested',
+            // Written once, when the recording ends and the picture is copied for it.
+            'artworkPath'    => 'artwork_path',
+            'description'    => 'description',
             'convertedPath'  => 'converted_path',
             'convertedBytes' => 'converted_bytes',
             'convertPid'     => 'convert_pid',
@@ -613,6 +616,8 @@ class RecordingStore
             'retry_after' => 'INTEGER',
         ]);
         $this->addMissingColumns('recordings', [
+            // The picture this recording was made with, kept so it cannot change later.
+            'artwork_path'      => 'TEXT',
             'convert_requested' => 'INTEGER NOT NULL DEFAULT 0',
             'convert_height'    => 'INTEGER',
             'reservation'       => 'TEXT',
@@ -697,6 +702,7 @@ class RecordingStore
             'error'            => $row['error'],
             'reservation'      => $row['reservation'],
             'stopRequested'    => $row['stop_requested'],
+            'artworkPath'      => $row['artwork_path'] ?? null,
             'convertedPath'    => $row['converted_path'] ?? null,
             'convertedBytes'   => ($row['converted_bytes'] ?? null) === null ? null : (int) $row['converted_bytes'],
             'convertPid'       => ($row['convert_pid'] ?? null) === null ? null : (int) $row['convert_pid'],

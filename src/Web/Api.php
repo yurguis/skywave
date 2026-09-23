@@ -957,6 +957,10 @@ class Api
     /**
      * Mark the recordings that have a picture, on the same terms as the guide.
      *
+     * A finished recording keeps a copy of the picture it was made with, so it is asked
+     * about first: the one filed under the title is shared by every recording of the show
+     * and changes whenever it is fetched again.
+     *
      * @param list<array<string, mixed>> $recordings
      * @return list<array<string, mixed>>
      */
@@ -969,7 +973,10 @@ class Api
         $artwork = ProgrammeArtwork::fromEnvironment();
 
         return array_map(static function (array $recording) use ($artwork): array {
-            $recording['art'] = $artwork->pathFor((string) ($recording['title'] ?? '')) !== null;
+            $own = $recording['artworkPath'] ?? null;
+
+            $recording['art'] = ($own !== null && $artwork->fileFor((string) $own) !== null)
+                || $artwork->pathFor((string) ($recording['title'] ?? '')) !== null;
 
             return $recording;
         }, $recordings);

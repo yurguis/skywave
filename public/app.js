@@ -2479,9 +2479,15 @@ function createRecordingsView(device, player) {
   function recordingArt(recording) {
     if (!recording.title || !recording.art) return h('span', { class: 'art' });
 
+    // Ask for the recording rather than the title: a finished one kept a copy of the
+    // picture it was made with, and the title's picture is shared by every recording of
+    // the show and changes whenever it is fetched again. The server falls back to the
+    // title for recordings made before copies were kept.
     const art = h('img', {
       class: 'art',
-      src: `/artwork?title=${encodeURIComponent(recording.title)}`,
+      src: recording.id
+        ? `/artwork?recording=${encodeURIComponent(recording.id)}`
+        : `/artwork?title=${encodeURIComponent(recording.title)}`,
       alt: '',
       loading: 'lazy',
     });

@@ -73,8 +73,27 @@ if (str_starts_with($path, '/hls/')) {
 
 // Programme pictures, fetched once and served from here. A query rather than a path: a
 // title can contain anything, including slashes, and none of it should become a path.
+//
+// A recording is asked for by id, because it keeps a copy of the picture it was made with:
+// the one filed under the title belongs to the show, and a later fetch would change every
+// recording of it at once. Recordings made before copies were kept fall back to the title.
 if ($path === '/artwork') {
-    $file = ProgrammeArtwork::fromEnvironment()->pathFor((string) ($_GET['title'] ?? ''));
+    $artwork = ProgrammeArtwork::fromEnvironment();
+    $file    = null;
+
+    if (isset($_GET['recording'])) {
+        $store     = RecordingStore::fromEnvironment();
+        $recording = $store->getRecording((int) $_GET['recording']);
+        $own       = $recording['artworkPath'] ?? null;
+
+        $file = $own === null ? null : $artwork->fileFor((string) $own);
+
+        if ($file === null && $recording !== null) {
+            $file = $artwork->pathFor((string) $recording['title']);
+        }
+    }
+
+    $file ??= $artwork->pathFor((string) ($_GET['title'] ?? ''));
 
     if ($file === null) {
         http_response_code(404);

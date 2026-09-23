@@ -148,6 +148,36 @@ class RecordingStoreTest extends TestCase
         $this->assertNull($this->store->getSchedule($id));
     }
 
+    public function testARecordingKeepsThePictureItWasMadeWith(): void
+    {
+        // Artwork is filed under the title, so every recording of a show shares one image
+        // and a later fetch would change all of them at once. A finished recording keeps
+        // the name of its own copy instead.
+        $id = $this->store->addRecording($this->recording());
+
+        $this->store->updateRecording($id, ['artworkPath' => 'recording-1.jpg']);
+
+        $this->assertSame('recording-1.jpg', $this->store->getRecording($id)['artworkPath']);
+    }
+
+    public function testARecordingWithoutItsOwnPictureSaysSo(): void
+    {
+        $id = $this->store->addRecording($this->recording());
+
+        $this->assertNull($this->store->getRecording($id)['artworkPath']);
+    }
+
+    public function testARecordingsDescriptionCanBeFilledInLater(): void
+    {
+        // Stations send the extended text close to air, so a schedule made days ahead
+        // usually carries none and the recorder reads it again when recording starts.
+        $id = $this->store->addRecording($this->recording(['description' => null]));
+
+        $this->store->updateRecording($id, ['description' => 'Tonight: a guest.']);
+
+        $this->assertSame('Tonight: a guest.', $this->store->getRecording($id)['description']);
+    }
+
     public function testOpeningAnExistingDatabaseAgainIsSafe(): void
     {
         // Every release may add columns to a database that is already out there; opening
@@ -157,6 +187,31 @@ class RecordingStoreTest extends TestCase
         $reopened = new RecordingStore($this->directory . '/guide.sqlite');
 
         $this->assertNotNull($reopened->getSchedule($id));
+    }
+
+    /**
+     * @param array<string, mixed> $overrides
+     * @return array<string, mixed>
+     */
+    private function recording(array $overrides = []): array
+    {
+        return $overrides + [
+            'scheduleId'  => null,
+            'device'      => '192.168.1.62',
+            'physical'    => 29,
+            'program'     => 3,
+            'virtual'     => '6.1',
+            'channelName' => 'WFOR-TV',
+            'title'       => 'The Late Show',
+            'description' => 'Tonight: a guest.',
+            'path'        => '2026-09-23 20-00 - 6.1 - The Late Show.ts',
+            'format'      => 'ts',
+            'tuner'       => 0,
+            'pid'         => 4242,
+            'startedAt'   => time(),
+            'stopsAt'     => time() + 1800,
+            'reservation' => null,
+        ];
     }
 
     /**

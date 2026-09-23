@@ -83,6 +83,24 @@ class ProgrammeArtworkTest extends TestCase
         $this->assertNull($this->artwork->pathFor('Wheel of Fortune'));
     }
 
+    public function testAPictureKeptForOneRecordingIsFoundByName(): void
+    {
+        // A recording keeps its own copy so the show's picture changing later cannot
+        // change what an old recording shows.
+        file_put_contents($this->directory . '/artwork/recording-12.jpg', 'not really a jpeg');
+
+        $this->assertSame($this->directory . '/artwork/recording-12.jpg', $this->artwork->fileFor('recording-12.jpg'));
+        $this->assertNull($this->artwork->fileFor('recording-13.jpg'));
+    }
+
+    public function testAStoredNameCannotReachOutOfTheFolder(): void
+    {
+        // The name comes back out of the database, so it is checked rather than trusted.
+        foreach (['../guide.sqlite', '../../etc/passwd', 'a/b.jpg', '..', ''] as $name) {
+            $this->assertNull($this->artwork->fileFor($name));
+        }
+    }
+
     public function testAMissIsRememberedAndThenForgotten(): void
     {
         $key = ProgrammeArtwork::key('Paid Programming');
