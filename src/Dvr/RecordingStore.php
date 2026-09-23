@@ -273,15 +273,15 @@ class RecordingStore
     public function updateRecording(int $id, array $fields): void
     {
         $columns = [
-            'bytes'          => 'bytes',
-            'pid'            => 'pid',
-            'status'         => 'status',
-            'endedAt'        => 'ended_at',
-            'error'          => 'error',
-            'path'           => 'path',
-            'stopsAt'        => 'stops_at',
-            'reservation'    => 'reservation',
-            'stopRequested'  => 'stop_requested',
+            'bytes'         => 'bytes',
+            'pid'           => 'pid',
+            'status'        => 'status',
+            'endedAt'       => 'ended_at',
+            'error'         => 'error',
+            'path'          => 'path',
+            'stopsAt'       => 'stops_at',
+            'reservation'   => 'reservation',
+            'stopRequested' => 'stop_requested',
             // Written once, when the recording ends and the picture is copied for it.
             'artworkPath'    => 'artwork_path',
             'description'    => 'description',
