@@ -2273,7 +2273,12 @@ function createRecordingsView(device, player) {
 
   const root = h('div', { class: 'view', hidden: true },
     h('section', { class: 'card' },
-      h('div', { class: 'guide-toolbar' }, h('h3', {}, 'Scheduled'), scheduledFilter, folder),
+      // The heading and where recordings are written are one thing, so they stack together
+      // and leave the filter as the only other child: the toolbar spaces them apart, which
+      // puts the filter on the right here exactly as it is above Recorded.
+      h('div', { class: 'guide-toolbar' },
+        h('div', { class: 'list-heading' }, h('h3', {}, 'Scheduled'), folder),
+        scheduledFilter),
       notice,
       h('div', { class: 'table-wrap' },
         h('table', { class: 'list-table' }, h('thead', {}, scheduledHead), scheduledBody)),

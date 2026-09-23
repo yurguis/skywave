@@ -904,6 +904,11 @@ button.record.is-recording,
   max-width: 100%;
 }
 
+/* A heading with a line under it that says something about the list as a whole: where
+   recordings are written, and how much room is left. The line is already muted where it
+   is built, so this only has to stack them. */
+.list-heading { display: grid; gap: 2px; min-width: 0; }
+
 .list-table { font-size: 13px; }
 .list-table th, .list-table td { padding: 8px 10px; vertical-align: middle; }
 .list-table td:first-child, .list-table th:first-child { padding-left: 0; }
