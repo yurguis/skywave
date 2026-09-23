@@ -186,7 +186,9 @@ class GuideStore
 
     /**
      * ATSC 3.0 stations, shaped like guide channels so the page draws them in the same
-     * list. They never carry events: a 3.0 multiplex has no PSIP tables to read.
+     * list. Events are filled in by the guide: a 3.0 multiplex carries no PSIP tables, so
+     * they come from a service guide the broadcast announces or from the channel it
+     * simulcasts, never from this table.
      *
      * @return list<array<string, mixed>>
      */
@@ -226,6 +228,51 @@ class GuideStore
             'streamUrl' => $row['stream_url'] ?? null,
             'events'    => [],
         ], $statement === false ? [] : $statement->fetchAll());
+    }
+
+    /**
+     * Store the programme listings an ATSC 3.0 service announces about itself.
+     *
+     * Kept apart from `events`, which hangs off `channels` by foreign key and so can only
+     * describe a channel a tuner can reach. These stations are never in that table, and
+     * are keyed by their virtual number instead.
+     *
+     * Rows are replaced one at a time rather than cleared per station: the announcement
+     * arrives in pieces, and a reading that recovers less than the one before it should
+     * refresh what it saw without erasing what it missed.
+     *
+     * @param list<array<string, mixed>> $events virtual, eventId, start, duration, title, rating, description
+     * @return int events stored
+     */
+    public function saveAtsc3Events(string $device, array $events): int
+    {
+        $now   = time();
+        $saved = 0;
+
+        $this->transaction(function () use ($device, $events, $now, &$saved): void {
+            $insert = $this->db->prepare(
+                'INSERT OR REPLACE INTO atsc3_events
+                    (device, virtual, event_id, start, duration, title, rating, description, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            );
+
+            foreach ($events as $event) {
+                $insert->execute([
+                    $device,
+                    (string) $event['virtual'],
+                    (int) $event['eventId'],
+                    (int) $event['start'],
+                    (int) $event['duration'],
+                    (string) $event['title'],
+                    $event['rating'] ?? null,
+                    $event['description'] ?? null,
+                    $now,
+                ]);
+                $saved++;
+            }
+        });
+
+        return $saved;
     }
 
     /**
@@ -341,24 +388,40 @@ class GuideStore
             $guide[] = $channel;
         }
 
-        // An ATSC 3.0 service simulcasts the channel a hundred below it, so it is showing
-        // the same programmes. It carries no tables of its own, so the counterpart's are
-        // shown rather than leaving the row blank. A service with no counterpart in the
-        // lineup stays empty.
+        // A service that announces a guide about itself is described by it, which is the
+        // only way an encrypted station says what it is showing. Only when it announces
+        // none does the channel a hundred below stand in, which it can because the two
+        // simulcast the same programmes. A service with neither stays empty.
         $byVirtual = [];
 
         foreach ($guide as $channel) {
             $byVirtual[$channel['virtual']] = $channel['events'];
         }
 
-        foreach ($this->getAtsc3Lineup($device) as $channel) {
-            $counterpart = self::atsc3Counterpart((string) $channel['virtual']);
+        $announced = $this->db->prepare(
+            'SELECT event_id, start, duration, title, rating, description FROM atsc3_events
+             WHERE device = ? AND virtual = ? AND start < CAST(? AS INTEGER) AND start + duration > CAST(? AS INTEGER)
+             ORDER BY start'
+        );
 
-            if ($counterpart !== null) {
-                $channel['events'] = $byVirtual[$counterpart] ?? [];
+        foreach ($this->getAtsc3Lineup($device) as $channel) {
+            $announced->execute([$channel['device'], $channel['virtual'], $to, $from]);
+            $own = array_map(fn (array $event) => [
+                'eventId'     => (int) $event['event_id'],
+                'start'       => (int) $event['start'],
+                'duration'    => (int) $event['duration'],
+                'title'       => $event['title'],
+                'rating'      => $event['rating'],
+                'description' => $event['description'],
+            ], $announced->fetchAll());
+
+            if ($own === []) {
+                $counterpart = self::atsc3Counterpart((string) $channel['virtual']);
+                $own         = $counterpart === null ? [] : ($byVirtual[$counterpart] ?? []);
             }
 
-            $guide[] = $channel;
+            $channel['events'] = $own;
+            $guide[]           = $channel;
         }
 
         usort($guide, fn (array $a, array $b) => [$a['device'], self::virtualKey($a['virtual'])] <=> [$b['device'], self::virtualKey($b['virtual'])]);
@@ -608,6 +671,19 @@ class GuideStore
                 updated_at INTEGER NOT NULL,
                 UNIQUE (device, virtual)
             );
+            CREATE TABLE IF NOT EXISTS atsc3_events (
+                device TEXT NOT NULL,
+                virtual TEXT NOT NULL,
+                event_id INTEGER NOT NULL,
+                start INTEGER NOT NULL,
+                duration INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                rating TEXT,
+                description TEXT,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (device, virtual, start)
+            );
+            CREATE INDEX IF NOT EXISTS atsc3_events_by_time ON atsc3_events (start);
             CREATE TABLE IF NOT EXISTS devices (
                 host TEXT PRIMARY KEY,
                 added_at INTEGER NOT NULL
