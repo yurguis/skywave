@@ -8,6 +8,8 @@ declare(strict_types=1);
 namespace Skywave\Dvr;
 
 use RuntimeException;
+use Skywave\Guide\GuideStore;
+use Skywave\Guide\ProgrammeArtwork;
 use Skywave\Hdhomerun\Device;
 use Skywave\Hdhomerun\Exception\HdhomerunException;
 use Skywave\Hdhomerun\Tuner;
@@ -379,7 +381,7 @@ class Recorder
             'virtual'     => $schedule['virtual'],
             'channelName' => $schedule['channelName'],
             'title'       => $schedule['title'],
-            'description' => $schedule['description'],
+            'description' => $this->currentDescription($schedule) ?? $schedule['description'],
             'path'        => $path,
             'format'      => $schedule['format'],
             'tuner'       => $tuner->getIndex(),
@@ -397,6 +399,47 @@ class Recorder
             $tuner->getIndex(),
             date('H:i', $stopsAt)
         ));
+    }
+
+    /**
+     * What the guide says about this programme now, rather than when it was scheduled.
+     *
+     * A schedule keeps the description the guide held when it was made, and for a
+     * programme set days ahead that is usually nothing: stations send the extended text
+     * much closer to air. Reading it again as recording starts picks up whatever arrived
+     * since, and the schedule's own copy still stands when nothing did.
+     *
+     * The guide is optional here, as it is everywhere else in this container: a database
+     * that cannot be opened costs a description, never a recording.
+     *
+     * @param array<string, mixed> $schedule
+     */
+    private function currentDescription(array $schedule): ?string
+    {
+        $start = (int) $schedule['start'];
+
+        try {
+            // A one-second window: the only event wanted is the one starting exactly here.
+            $guide = GuideStore::fromEnvironment()->getGuide($start, $start + 1, (string) $schedule['device']);
+        } catch (Throwable $e) {
+            return null;
+        }
+
+        foreach ($guide as $channel) {
+            if ((string) $channel['virtual'] !== (string) $schedule['virtual']) {
+                continue;
+            }
+
+            foreach ($channel['events'] as $event) {
+                $description = $event['description'] ?? null;
+
+                if ((int) $event['start'] === $start && $description !== null && $description !== '') {
+                    return (string) $description;
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -643,6 +686,7 @@ class Recorder
             'error'   => $error,
             // The request has been carried out; leaving it set would read as "stopping".
             'stopRequested' => null,
+            'artworkPath'   => $this->keepArtwork($recording),
         ]);
 
         if ($recording['scheduleId'] !== null) {
@@ -662,6 +706,38 @@ class Recorder
             $bytes / 1e9,
             $error === null ? '' : ": $error"
         ));
+    }
+
+    /**
+     * Keep a copy of the picture this programme had when it was recorded.
+     *
+     * Artwork is filed under the title alone, so every recording of a show shares one
+     * image and a later fetch changes all of them at once: a episode captured this season
+     * would quietly take on next season's cast. A recording that owns its own copy keeps
+     * what it was made with.
+     *
+     * Best effort by design. A recording is worth having without a picture, so a missing
+     * image, a full disk or an unwritable folder returns null and nothing is said.
+     *
+     * @param array<string, mixed> $recording
+     * @return string|null the file name, or null to leave the column as it was
+     */
+    private function keepArtwork(array $recording): ?string
+    {
+        if (($recording['artworkPath'] ?? null) !== null) {
+            return $recording['artworkPath'];
+        }
+
+        $artwork = ProgrammeArtwork::fromEnvironment();
+        $source  = $artwork->pathFor((string) $recording['title']);
+
+        if ($source === null) {
+            return null;
+        }
+
+        $name = sprintf('recording-%d.jpg', (int) $recording['id']);
+
+        return @copy($source, $artwork->getDirectory() . "/$name") ? $name : null;
     }
 
     /**

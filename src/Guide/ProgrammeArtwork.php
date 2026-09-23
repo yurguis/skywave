@@ -93,6 +93,25 @@ class ProgrammeArtwork
     }
 
     /**
+     * A picture stored here under a name of our own, or null when it is not there.
+     *
+     * A recording keeps a copy of the picture it was made with, filed under its own name
+     * rather than the title's hash. The name comes back out of the database, so it is
+     * checked rather than trusted: only a plain file name is allowed, and nothing that
+     * could climb out of the folder.
+     */
+    public function fileFor(string $name): ?string
+    {
+        if (preg_match('/^[A-Za-z0-9._-]{1,80}$/', $name) !== 1 || str_contains($name, '..')) {
+            return null;
+        }
+
+        $path = "$this->directory/$name";
+
+        return is_file($path) ? $path : null;
+    }
+
+    /**
      * Fetch pictures for titles that have none, remembering the ones TVmaze does not know.
      *
      * Misses matter as much as hits: a channel running "Paid Programming" two dozen times a

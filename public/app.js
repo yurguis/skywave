@@ -2235,24 +2235,59 @@ function createRecordingsView(device, player) {
 
   const folder = h('span', { class: 'guide-status muted' });
   const notice = h('div', { class: 'guide-notice', hidden: true });
-  const scheduled = h('div', { class: 'recordings' });
-  const recorded = h('div', { class: 'recordings' });
   const series = h('div', { class: 'recordings' });
   const seriesCard = h('section', { class: 'card', hidden: true },
     h('h3', {}, 'Series'),
     series,
   );
 
+  // Held out here because the list reloads every few seconds while something is recording:
+  // a filter that cleared itself under you, or a sort that jumped back, would be useless.
+  const filters = { scheduled: '', recorded: '' };
+  const sorts = {
+    scheduled: { key: 'when', direction: 'asc' },
+    recorded: { key: 'when', direction: 'desc' },
+  };
+
+  // Built once for the same reason: recreating the input on every refresh would take the
+  // cursor out of it mid-word.
+  function filterBox(which, label) {
+    const input = h('input', {
+      type: 'search',
+      class: 'list-filter',
+      id: `filter-${which}`,
+      placeholder: label,
+      'aria-label': label,
+      oninput: () => { filters[which] = input.value; render(); },
+    });
+
+    return input;
+  }
+
+  const scheduledFilter = filterBox('scheduled', 'Filter by show or channel');
+  const recordedFilter  = filterBox('recorded', 'Filter by show or channel');
+  const scheduledHead   = h('tr', {});
+  const scheduledBody   = h('tbody', {});
+  const recordedHead    = h('tr', {});
+  const recordedBody    = h('tbody', {});
+
   const root = h('div', { class: 'view', hidden: true },
     h('section', { class: 'card' },
-      h('div', { class: 'guide-toolbar' }, h('h3', {}, 'Scheduled'), folder),
+      // The heading and where recordings are written are one thing, so they stack together
+      // and leave the filter as the only other child: the toolbar spaces them apart, which
+      // puts the filter on the right here exactly as it is above Recorded.
+      h('div', { class: 'guide-toolbar' },
+        h('div', { class: 'list-heading' }, h('h3', {}, 'Scheduled'), folder),
+        scheduledFilter),
       notice,
-      scheduled,
+      h('div', { class: 'table-wrap' },
+        h('table', { class: 'list-table' }, h('thead', {}, scheduledHead), scheduledBody)),
     ),
     seriesCard,
     h('section', { class: 'card' },
-      h('h3', {}, 'Recorded'),
-      recorded,
+      h('div', { class: 'guide-toolbar' }, h('h3', {}, 'Recorded'), recordedFilter),
+      h('div', { class: 'table-wrap' },
+        h('table', { class: 'list-table' }, h('thead', {}, recordedHead), recordedBody)),
     ),
   );
 
@@ -2307,26 +2342,69 @@ function createRecordingsView(device, player) {
     // What has already been recorded belongs in the list below, not here.
     const pending = data.schedules.filter((schedule) => !['done', 'cancelled'].includes(schedule.status));
 
-    scheduled.replaceChildren(...(pending.length === 0
-      ? [h('p', { class: 'muted' }, 'Nothing scheduled. Pick a program in the Guide and choose Record.')]
-      : pending.map((schedule) => row({
-        when: schedule.start,
-        title: schedule.title,
-        subtitle: `${schedule.virtual} ${schedule.channelName} · ${formatDuration(schedule.duration)}`,
-        error: schedule.error,
-        status: schedule.status,
-        actions: [schedule.status === 'recording'
-          ? h('button', {
-            type: 'button',
-            class: 'secondary',
-            onclick: (clickEvent) => stopRecordingFor(schedule, clickEvent.currentTarget),
-          }, 'Stop')
-          : h('button', {
-            type: 'button',
-            class: 'secondary',
-            onclick: (clickEvent) => act(`/api/recordings/schedules/${schedule.id}`, { method: 'DELETE' }, clickEvent.currentTarget, 'Cancelling…'),
-          }, 'Cancel')],
-      }))));
+    fillTable({
+      which: 'scheduled',
+      head: scheduledHead,
+      body: scheduledBody,
+      items: pending,
+      empty: 'Nothing scheduled. Pick a program in the Guide and choose Record.',
+      columns: [
+        {
+          key: 'when',
+          label: 'Date',
+          class: 'cell-when',
+          sort: (schedule) => schedule.start,
+          cell: (schedule) => `${dayFormat.format(schedule.start * 1000)}, ${timeFormat.format(schedule.start * 1000)}`,
+        },
+        {
+          key: 'title',
+          label: 'Show',
+          sort: (schedule) => schedule.title.toLowerCase(),
+          search: (schedule) => schedule.title,
+          cell: (schedule) => h('span', { class: 'cell-show' },
+            h('span', { class: 'name' },
+              h('span', { class: 'title' }, schedule.title),
+              schedule.error && h('span', { class: 'muted' }, schedule.error))),
+        },
+        {
+          key: 'channel',
+          label: 'Channel',
+          class: 'drop-narrow',
+          sort: (schedule) => virtualKey(schedule.virtual),
+          search: (schedule) => `${schedule.virtual} ${schedule.channelName}`,
+          cell: (schedule) => `${schedule.virtual} ${schedule.channelName}`,
+        },
+        {
+          key: 'length',
+          label: 'Length',
+          class: 'cell-length drop-narrow',
+          sort: (schedule) => schedule.duration,
+          cell: (schedule) => formatDuration(schedule.duration),
+        },
+        {
+          key: 'status',
+          label: 'Status',
+          sort: (schedule) => schedule.status,
+          cell: (schedule) => h('span', { class: `badge${schedule.status === 'recording' ? ' locked' : ''}` }, schedule.status),
+        },
+        {
+          key: 'actions',
+          label: '',
+          class: 'cell-actions',
+          cell: (schedule) => h('span', { class: 'actions' }, schedule.status === 'recording'
+            ? h('button', {
+              type: 'button',
+              class: 'secondary',
+              onclick: (clickEvent) => stopRecordingFor(schedule, clickEvent.currentTarget),
+            }, 'Stop')
+            : h('button', {
+              type: 'button',
+              class: 'secondary',
+              onclick: (clickEvent) => act(`/api/recordings/schedules/${schedule.id}`, { method: 'DELETE' }, clickEvent.currentTarget, 'Cancelling…'),
+            }, 'Cancel')),
+        },
+      ],
+    });
 
     // A rule has no time of its own: it stands until cancelled, so it gets a plainer row
     // than a schedule or a recording.
@@ -2350,44 +2428,165 @@ function createRecordingsView(device, player) {
       ),
     )));
 
-    recorded.replaceChildren(...(data.recordings.length === 0
-      ? [h('p', { class: 'muted' }, 'Nothing recorded yet.')]
-      : data.recordings.map((recording) => row({
-        when: recording.startedAt,
-        art: recordingArt(recording),
-        title: [recording.title, ...recordingBadges(recording)],
-        subtitle: `${recording.virtual} ${recording.channelName} · ${formatBytes(recording.bytes)}${describeCopy(recording)}`,
-        progress: recording.status === 'recording' ? progressFor(recording) : null,
-        error: recording.error,
-        // The recorder finishes a stop on its next pass, a few seconds later.
-        status: recording.status === 'recording' && recording.stopRequested ? 'stopping' : recording.status,
-        actions: recording.status === 'recording'
-          ? [h('button', {
-            type: 'button',
-            class: 'secondary',
-            onclick: (clickEvent) => act(`/api/recordings/${recording.id}/stop`, { method: 'POST' }, clickEvent.currentTarget, 'Stopping…'),
-          }, 'Stop')]
-          : [
-            recording.bytes > 0 && h('button', {
-              type: 'button',
-              class: 'watch',
-              onclick: (clickEvent) => playRecording(recording, clickEvent.currentTarget),
-            }, '▶ Play'),
-            recording.bytes > 0 && h('button', {
+    fillTable({
+      which: 'recorded',
+      head: recordedHead,
+      body: recordedBody,
+      items: data.recordings,
+      empty: 'Nothing recorded yet.',
+      columns: [
+        {
+          key: 'when',
+          label: 'Date',
+          class: 'cell-when',
+          sort: (recording) => recording.startedAt,
+          cell: (recording) => `${dayFormat.format(recording.startedAt * 1000)}, ${timeFormat.format(recording.startedAt * 1000)}`,
+        },
+        {
+          key: 'title',
+          label: 'Show',
+          sort: (recording) => recording.title.toLowerCase(),
+          search: (recording) => recording.title,
+          cell: (recording) => h('span', { class: 'cell-show' },
+            recordingArt(recording),
+            h('span', { class: 'name' },
+              h('span', { class: 'title' }, recording.title, ...recordingBadges(recording)),
+              recording.status === 'recording' ? progressFor(recording) : null,
+              recording.error && h('span', { class: 'muted' }, recording.error),
+              describeCopy(recording) && h('span', { class: 'muted' }, describeCopy(recording).replace(/^ · /, '')))),
+        },
+        {
+          key: 'channel',
+          label: 'Channel',
+          class: 'drop-narrow',
+          sort: (recording) => virtualKey(recording.virtual),
+          search: (recording) => `${recording.virtual} ${recording.channelName}`,
+          cell: (recording) => `${recording.virtual} ${recording.channelName}`,
+        },
+        {
+          key: 'length',
+          label: 'Length',
+          class: 'cell-length drop-narrow',
+          sort: (recording) => lengthOf(recording),
+          cell: (recording) => lengthOf(recording) === 0 ? '—' : formatDuration(lengthOf(recording)),
+        },
+        {
+          key: 'size',
+          label: 'Size',
+          class: 'cell-size',
+          sort: (recording) => recording.bytes,
+          cell: (recording) => formatBytes(recording.bytes),
+        },
+        {
+          key: 'status',
+          label: 'Status',
+          sort: (recording) => recording.status,
+          // The recorder finishes a stop on its next pass, a few seconds later.
+          cell: (recording) => {
+            const status = recording.status === 'recording' && recording.stopRequested ? 'stopping' : recording.status;
+
+            return status === 'done'
+              ? h('span', { class: 'muted' }, 'done')
+              : h('span', { class: `badge${status === 'recording' ? ' locked' : ''}` }, status);
+          },
+        },
+        {
+          key: 'actions',
+          label: '',
+          class: 'cell-actions',
+          cell: (recording) => h('span', { class: 'actions' }, recording.status === 'recording'
+            ? h('button', {
               type: 'button',
               class: 'secondary',
-              title: 'Save it to this device',
-              // Content-Disposition makes the browser save it, so the page stays put.
-              onclick: () => { window.location.href = `/recordings/${recording.id}/file?download=1`; },
-            }, '⤓ Download'),
-            convertControl(recording),
-            h('button', {
-              type: 'button',
-              class: 'secondary',
-              onclick: (clickEvent) => remove(recording, clickEvent.currentTarget),
-            }, 'Delete'),
-          ],
-      }))));
+              onclick: (clickEvent) => act(`/api/recordings/${recording.id}/stop`, { method: 'POST' }, clickEvent.currentTarget, 'Stopping…'),
+            }, 'Stop')
+            : [
+              recording.bytes > 0 && h('button', {
+                type: 'button',
+                class: 'watch',
+                onclick: (clickEvent) => playRecording(recording, clickEvent.currentTarget),
+              }, '▶ Play'),
+              recording.bytes > 0 && h('button', {
+                type: 'button',
+                class: 'secondary',
+                title: 'Save it to this device',
+                // Content-Disposition makes the browser save it, so the page stays put.
+                onclick: () => { window.location.href = `/recordings/${recording.id}/file?download=1`; },
+              }, '⤓ Download'),
+              convertControl(recording),
+              h('button', {
+                type: 'button',
+                class: 'secondary',
+                onclick: (clickEvent) => remove(recording, clickEvent.currentTarget),
+              }, 'Delete'),
+            ]),
+        },
+      ],
+    });
+  }
+
+  /** How long a recording ran. A running one is still growing, so it is measured to now. */
+  function lengthOf(recording) {
+    return Math.max(0, (recording.endedAt ?? Math.floor(Date.now() / 1000)) - recording.startedAt);
+  }
+
+  /** Sort key for "4.10" after "4.9", the same way the guide orders channels. */
+  function virtualKey(virtual) {
+    const [major, minor] = String(virtual).split('.');
+
+    return Number(major) * 1000 + Number(minor ?? 0);
+  }
+
+  /**
+   * One list as a table: the same fields on every row, so sorting and filtering are worth
+   * more than a card each. The filter matches anything a column offers to search, which is
+   * the show and the channel rather than every field on the row.
+   */
+  function fillTable({ which, head, body, items, columns, empty }) {
+    const sort = sorts[which];
+    const needle = filters[which].trim().toLowerCase();
+
+    const matching = needle === ''
+      ? items
+      : items.filter((item) => columns.some((column) => column.search
+        && String(column.search(item)).toLowerCase().includes(needle)));
+
+    const column = columns.find((candidate) => candidate.key === sort.key) ?? columns[0];
+    const sorted = column.sort
+      ? [...matching].sort((first, second) => {
+        const left = column.sort(first);
+        const right = column.sort(second);
+        const order = left < right ? -1 : left > right ? 1 : 0;
+
+        return sort.direction === 'asc' ? order : -order;
+      })
+      : matching;
+
+    head.replaceChildren(...columns.map((candidate) => {
+      if (!candidate.sort) return h('th', { class: candidate.class }, candidate.label);
+
+      const active = candidate.key === sort.key;
+
+      return h('th', { class: [candidate.class, active ? 'sorted' : null].filter(Boolean).join(' ') || null },
+        h('button', {
+          type: 'button',
+          class: 'sort',
+          // Clicking the column already sorted reverses it; a new one starts the way that
+          // column is most useful, which for a date is newest first.
+          onclick: () => {
+            sorts[which] = active
+              ? { key: candidate.key, direction: sort.direction === 'asc' ? 'desc' : 'asc' }
+              : { key: candidate.key, direction: candidate.key === 'when' ? 'desc' : 'asc' };
+            render();
+          },
+        }, candidate.label, active && h('span', { class: 'arrow' }, sort.direction === 'asc' ? '▲' : '▼')),
+      );
+    }));
+
+    body.replaceChildren(...(sorted.length === 0
+      ? [h('tr', {}, h('td', { colspan: String(columns.length), class: 'muted' },
+        items.length === 0 ? empty : 'Nothing matches that filter.'))]
+      : sorted.map((item) => h('tr', {}, columns.map((candidate) => h('td', { class: candidate.class }, candidate.cell(item)))))));
   }
 
   /**
@@ -2479,9 +2678,15 @@ function createRecordingsView(device, player) {
   function recordingArt(recording) {
     if (!recording.title || !recording.art) return h('span', { class: 'art' });
 
+    // Ask for the recording rather than the title: a finished one kept a copy of the
+    // picture it was made with, and the title's picture is shared by every recording of
+    // the show and changes whenever it is fetched again. The server falls back to the
+    // title for recordings made before copies were kept.
     const art = h('img', {
       class: 'art',
-      src: `/artwork?title=${encodeURIComponent(recording.title)}`,
+      src: recording.id
+        ? `/artwork?recording=${encodeURIComponent(recording.id)}`
+        : `/artwork?title=${encodeURIComponent(recording.title)}`,
       alt: '',
       loading: 'lazy',
     });
@@ -2489,25 +2694,6 @@ function createRecordingsView(device, player) {
     art.addEventListener('error', () => { art.style.visibility = 'hidden'; });
 
     return art;
-  }
-
-  function row({ when, art, title, subtitle, progress, error, status, actions }) {
-    return h('div', { class: art ? 'recording with-art' : 'recording' },
-      h('span', { class: 'when muted' }, `${dayFormat.format(when * 1000)}, ${timeFormat.format(when * 1000)}`),
-      art,
-      h('span', { class: 'what' },
-        h('span', { class: 'title' }, title),
-        h('span', { class: 'muted' }, subtitle),
-        progress,
-        error && h('span', { class: 'muted' }, error),
-      ),
-      h('span', { class: 'actions' },
-        // Only while something is happening: a finished recording says so by offering to
-        // play, download or delete it.
-        status && status !== 'done' ? h('span', { class: `badge${status === 'recording' ? ' locked' : ''}` }, status) : null,
-        ...actions,
-      ),
-    );
   }
 
   // A ts recording holds the broadcast as it was sent, which no browser can decode, so the
