@@ -482,14 +482,35 @@ class LiveStreams
 
         // Stereo, like every other path a browser plays: its media source does not reliably
         // decode surround. These carry AC-4 in stereo anyway, so nothing is lost.
-        $audio = $sound ? ['-c:a', 'aac', '-ac', '2'] : ['-an'];
+        //
+        // The timestamps this source sends go backwards, repeatedly: three minutes of it
+        // produced nine non-monotonic runs, and ffmpeg's answer is to throw the real
+        // timestamps away and count upwards from the last good one. It does that for each
+        // stream separately, so picture and sound end up on two invented clocks and pull
+        // apart over a few minutes. Resampling the audio against the video's timeline keeps
+        // them on one clock: sound is stretched or padded to follow the picture rather than
+        // drifting away from it.
+        $audio = $sound
+            ? ['-c:a', 'aac', '-ac', '2', '-af', 'aresample=async=1:first_pts=0']
+            : ['-an'];
 
         return array_merge([
-            $sound ? $this->ac4Ffmpeg : $this->ffmpeg, '-hide_banner', '-nostdin', '-loglevel', 'error',
+            // Warnings, not just errors, and only on this path: this source rewrites its
+            // own timestamps, and "error" kept the log empty while the one thing worth
+            // knowing -- whether ffmpeg is still having to invent them -- went unrecorded.
+            $sound ? $this->ac4Ffmpeg : $this->ffmpeg, '-hide_banner', '-nostdin', '-loglevel', 'warning',
             '-i', $source,
             '-filter_complex', implode(';', $graph),
         ], $outputs, $audio, [
-            '-fps_mode', 'passthrough',
+            // A constant rate rather than the source's own timing. Passing the timestamps
+            // through preserved the backwards jumps this stream sends, which is what left
+            // the picture on an invented clock; resampling to a fixed rate absorbs them.
+            //
+            // In principle that costs a repeated or dropped frame wherever a jump lands.
+            // Measured, it costs neither: ffmpeg reported no duplicates and no drops, and
+            // the output runs at a clean 59.94 with exactly 120 frames in every two-second
+            // segment. The jumps are absorbed without manufacturing anything.
+            '-fps_mode', 'cfr',
             '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-crf', '21',
             '-force_key_frames', 'expr:gte(t,n_forced*2)', '-sc_threshold', '0',
             '-f', 'hls', '-hls_time', (string) self::SEGMENT_SECONDS,
