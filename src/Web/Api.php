@@ -476,6 +476,16 @@ class Api
             throw new ApiException("No signal lock on $channel", 409);
         }
 
+        // The signal is fine; there is simply no transport stream to read. Said here rather
+        // than left to fail at the stream, which reported only that an HTTP request failed.
+        if (!$status->carriesTransportStream()) {
+            throw new ApiException(
+                "Channel $physical is ATSC 3.0, which carries IP packets rather than an MPEG "
+                . 'transport stream, so there is nothing here for the analyzer to read.',
+                409
+            );
+        }
+
         set_time_limit($seconds + 30);
 
         $targetBefore = $tuner->getTarget();

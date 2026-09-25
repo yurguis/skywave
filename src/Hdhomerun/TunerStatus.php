@@ -119,6 +119,24 @@ class TunerStatus
         return $this->lock !== '' && $this->lock[0] === '(';
     }
 
+    /**
+     * Whether what the demodulator has locked onto is an MPEG transport stream.
+     *
+     * ATSC 3.0 is the one modulation here that is not. It carries IP packets inside ALP,
+     * so a tuner locked to it has nothing to stream on the ordinary path and the device
+     * answers 503 -- a lock in perfect health with no transport stream behind it, which
+     * the status line shows plainly:
+     *
+     *     ch=auto:31 lock=atsc3 ss=62 snq=47 seq=0 bps=0 pps=0
+     *
+     * Deliberately separate from isLockSupported(), which is true here and should be:
+     * the signal is fine, and reporting it as unlocked would be a different lie.
+     */
+    public function carriesTransportStream(): bool
+    {
+        return $this->isLockSupported() && $this->lock !== 'atsc3';
+    }
+
     public function getSignalStrengthColor(): string
     {
         if (!$this->isLockSupported()) {
