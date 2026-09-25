@@ -404,6 +404,12 @@ class GuideStore
              ORDER BY start'
         );
 
+        // What each service announces about itself, kept under the number of the channel it
+        // simulcasts. Gathered before the borrowing below, so a service that announced
+        // nothing and took its counterpart's listings cannot lend them straight back and
+        // have that counterpart credit its own words to it.
+        $announcements = [];
+
         foreach ($this->getAtsc3Lineup($device) as $channel) {
             $announced->execute([$channel['device'], $channel['virtual'], $to, $from]);
             $own = array_map(fn (array $event) => [
@@ -415,16 +421,89 @@ class GuideStore
                 'description' => $event['description'],
             ], $announced->fetchAll());
 
+            $counterpart = self::atsc3Counterpart((string) $channel['virtual']);
+
+            if ($own !== [] && $counterpart !== null) {
+                $announcements[$counterpart] = ['virtual' => (string) $channel['virtual'], 'events' => $own];
+            }
+
             if ($own === []) {
-                $counterpart = self::atsc3Counterpart((string) $channel['virtual']);
-                $own         = $counterpart === null ? [] : ($byVirtual[$counterpart] ?? []);
+                $own = $counterpart === null ? [] : ($byVirtual[$counterpart] ?? []);
             }
 
             $channel['events'] = $own;
             $guide[]           = $channel;
         }
 
+        $guide = self::describeFromSimulcast($guide, $announcements);
+
         usort($guide, fn (array $a, array $b) => [$a['device'], self::virtualKey($a['virtual'])] <=> [$b['device'], self::virtualKey($b['virtual'])]);
+
+        return $guide;
+    }
+
+    /**
+     * Describe a programme from the service that simulcasts it, when the channel itself
+     * says nothing about it.
+     *
+     * Some stations describe their programmes only on their ATSC 3.0 number: WTVJ carries a
+     * synopsis for showings on 106.1 and none whatever on 6.1, so the same programme is
+     * described under one number and bare under the other. The schedules are the same, so
+     * the description fits -- but it remains a claim about what 106.1 announced rather than
+     * anything 6.1 broadcast, and `descriptionFrom` carries that so the page can say so
+     * instead of passing the words off as the channel's own.
+     *
+     * Matched on start and title together. The two feeds drift -- ten showings against nine
+     * in the same window, observed -- and hanging a synopsis on the wrong programme would be
+     * worse than leaving it bare.
+     *
+     * @param list<array<string, mixed>> $guide
+     * @param array<string, array{virtual: string, events: list<array<string, mixed>>}> $announcements
+     * @return list<array<string, mixed>>
+     */
+    private static function describeFromSimulcast(array $guide, array $announcements): array
+    {
+        foreach ($guide as $index => $channel) {
+            if ($channel['atsc3'] ?? false) {
+                continue;
+            }
+
+            $offer = $announcements[(string) ($channel['virtual'] ?? '')] ?? null;
+
+            if ($offer === null) {
+                continue;
+            }
+
+            $described = [];
+
+            foreach ($offer['events'] as $event) {
+                if (($event['description'] ?? '') !== '') {
+                    $described[$event['start'] . '|' . $event['title']] = (string) $event['description'];
+                }
+            }
+
+            if ($described === []) {
+                continue;
+            }
+
+            $guide[$index]['events'] = array_map(static function (array $event) use ($described, $offer): array {
+                // Whatever the channel says for itself wins; this only fills a silence.
+                if (($event['description'] ?? '') !== '') {
+                    return $event;
+                }
+
+                $key = $event['start'] . '|' . $event['title'];
+
+                if (!isset($described[$key])) {
+                    return $event;
+                }
+
+                $event['description']     = $described[$key];
+                $event['descriptionFrom'] = $offer['virtual'];
+
+                return $event;
+            }, $channel['events']);
+        }
 
         return $guide;
     }

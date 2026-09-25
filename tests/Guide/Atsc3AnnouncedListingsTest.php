@@ -178,10 +178,71 @@ class Atsc3AnnouncedListingsTest extends TestCase
         ]]);
     }
 
+    public function testAChannelTakesADescriptionFromTheServiceThatSimulcastsIt(): void
+    {
+        // WTVJ describes its programmes on 106.1 and never on 6.1, so without this the same
+        // showing is described under one number and bare under the other.
+        $start = time() + 600;
+
+        $this->listStation('106.1', 'WTVJ-DT');
+        $this->addCounterpartEvent('NBC News Daily', $start);
+        $this->announce('106.1', 'NBC News Daily', $start, description: 'Members of the NBC news team report.');
+
+        $event = $this->guideChannel('6.1')['events'][0];
+
+        $this->assertSame('Members of the NBC news team report.', $event['description']);
+        $this->assertSame('106.1', $event['descriptionFrom']);
+    }
+
+    public function testAChannelThatDescribesAProgrammeItselfIsLeftAlone(): void
+    {
+        $start = time() + 600;
+
+        $this->listStation('106.1', 'WTVJ-DT');
+        $this->addCounterpartEvent('NBC News Daily', $start, 'What the channel itself broadcast.');
+        $this->announce('106.1', 'NBC News Daily', $start, description: 'What the service announced.');
+
+        $event = $this->guideChannel('6.1')['events'][0];
+
+        $this->assertSame('What the channel itself broadcast.', $event['description']);
+        $this->assertArrayNotHasKey('descriptionFrom', $event);
+    }
+
+    public function testADescriptionIsNotTakenForADifferentProgramme(): void
+    {
+        // The feeds drift, so a description is only ever moved when the start and the title
+        // both agree. Hanging a synopsis on the wrong programme is worse than none at all.
+        $start = time() + 600;
+
+        $this->listStation('106.1', 'WTVJ-DT');
+        $this->addCounterpartEvent('NBC6 News at Noon', $start);
+        $this->announce('106.1', 'Dateline', $start, description: 'Investigative reports.');
+
+        $event = $this->guideChannel('6.1')['events'][0];
+
+        $this->assertNull($event['description']);
+        $this->assertArrayNotHasKey('descriptionFrom', $event);
+    }
+
+    public function testNothingIsTakenFromAServiceThatOnlyBorrowedInTheFirstPlace(): void
+    {
+        // 106.1 announces nothing, so it shows 6.1's listings. Those must not travel back
+        // and have 6.1 credit its own words to 106.1.
+        $start = time() + 600;
+
+        $this->listStation('106.1', 'WTVJ-DT');
+        $this->addCounterpartEvent('NBC News Daily', $start, 'The channel said this.');
+
+        $event = $this->guideChannel('6.1')['events'][0];
+
+        $this->assertSame('The channel said this.', $event['description']);
+        $this->assertArrayNotHasKey('descriptionFrom', $event);
+    }
+
     /**
      * An event on 6.1, the channel the 106.1 service simulcasts.
      */
-    private function addCounterpartEvent(string $title): void
+    private function addCounterpartEvent(string $title, ?int $start = null, ?string $description = null): void
     {
         $db = new \PDO('sqlite:' . $this->directory . '/guide.sqlite', null, null, [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);
 
@@ -190,8 +251,8 @@ class Atsc3AnnouncedListingsTest extends TestCase
 
         $db->prepare(
             'INSERT OR REPLACE INTO events (channel_id, event_id, start, duration, title, rating, description, updated_at)
-             VALUES (?, ?, ?, ?, ?, NULL, NULL, ?)'
-        )->execute([(int) $find->fetchColumn(), 42, time() + 600, 1800, $title, time()]);
+             VALUES (?, ?, ?, ?, ?, NULL, ?, ?)'
+        )->execute([(int) $find->fetchColumn(), 42, $start ?? time() + 600, 1800, $title, $description, time()]);
     }
 
     /**
