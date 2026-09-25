@@ -1960,7 +1960,15 @@ function createGuideView(device, player) {
       // child, so with no picture the description simply has the row to itself.
       h('div', { class: 'programme-detail' },
         programmeArtwork(event.title, event.art),
-        event.description ? h('p', {}, event.description) : h('p', { class: 'muted' }, 'No description.'),
+        // Where the words came from, when they did not come from this channel. Some
+        // stations describe their programmes only on their ATSC 3.0 number, so the guide
+        // fills the silence from there and says as much rather than implying the channel
+        // broadcast a synopsis it never sent.
+        event.description
+          ? h('p', {}, event.description,
+            event.descriptionFrom && h('br'),
+            event.descriptionFrom && h('span', { class: 'muted' }, `Description announced on ${event.descriptionFrom}.`))
+          : h('p', { class: 'muted' }, 'No description.'),
       ),
       h('div', { class: 'controls' },
         h('button', {
