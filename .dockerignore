@@ -18,7 +18,12 @@ test.php
 
 # Local-only ATSC 3.0 inspection tooling. Present in this working tree by choice;
 # never committed, and never copied into the Docker image.
+#
+# The pattern matches every tool in the family, not one of them by name: the reader
+# that goes with the analyzer was being built into the image on its own, without the
+# src/Atsc3 classes it needs, so it could only ever have failed if anything had run it.
 src/Atsc3
+tools/atsc3-*.php
 tools/atsc3.php
 
 # Locally built AC-4 ffmpeg; the recipe is committed, the binary never is.
