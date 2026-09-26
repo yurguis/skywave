@@ -2146,6 +2146,21 @@ function createGuideView(device, player) {
         'aria-label': reason,
         onclick: (clickEvent) => (atsc3 ? watchAtsc3 : watch)(channel, clickEvent.currentTarget),
       }, '▶'),
+      // The station's own application, when its address is known. Offered for encrypted
+      // stations as well, beside a play control that stays disabled: those cannot be tuned
+      // here at all, but the application serves the same programming from the broadcaster's
+      // broadband service, so it is the only way they can be watched.
+      //
+      // A new tab. The application is a separate experience, and navigating away would
+      // throw away whatever is playing.
+      channel.appUrl && h('a', {
+        class: 'guide-empty-app',
+        href: channel.appUrl,
+        target: '_blank',
+        rel: 'noopener',
+        title: `Open the ${channel.virtual} ${channel.name} app`,
+        'aria-label': `Open the ${channel.virtual} ${channel.name} app`,
+      }, '⧉'),
       h('span', {}, atsc3
         ? (playable ? 'ATSC 3.0 · no programme data' : 'ATSC 3.0 — cannot be tuned here')
         : 'No guide data'),
