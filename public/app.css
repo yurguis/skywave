@@ -749,6 +749,27 @@ details > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 
 .guide-empty-play:hover:not(:disabled) { border-color: var(--accent); }
 .guide-empty-play:disabled { opacity: .5; cursor: default; }
+
+/* Beside the play control and built to the same metrics, so the two read as a pair. An
+   anchor rather than a button, which is why the centring and the underline are spelled
+   out here: a link that opens the station's own application in a new tab. */
+.guide-empty-app {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--accent);
+  font-size: 9px;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.guide-empty-app:hover { border-color: var(--accent); }
 /* One size for all three. The HD pill kept the smaller type and tighter padding it was
    given back when it sat alone against the channel name, which left it visibly shorter
    than the 3.0 and DRM pills once it had neighbours. The compact metrics win here, since
