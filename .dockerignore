@@ -25,6 +25,9 @@ test.php
 src/Atsc3
 tools/atsc3-*.php
 tools/atsc3.php
+# A directory, so the .php patterns above do not cover it. It carries its own
+# node_modules, and the image has no node to run any of it with.
+tools/atsc3-app/
 
 # Locally built AC-4 ffmpeg; the recipe is committed, the binary never is.
 data/ac4/
