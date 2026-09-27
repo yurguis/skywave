@@ -109,18 +109,15 @@ class LiveStreams
     }
 
     /**
-     * Watch a program on a tuned tuner, starting its transcoder if nobody else is.
-     * Another program already streaming from the same tuner is stopped first.
-     *
-     * @return array<string, mixed>
-     */
-    /**
      * Watch something delivered over the internet rather than over the air.
      *
      * Some ATSC 3.0 services carry their media on a CDN and only describe it over the air.
      * There is no tuner involved, so none is reserved and none is restored; the session is
-     * identified by the manifest it plays. The audio is AC-4, which nothing here can decode,
-     * so only the picture is taken.
+     * identified by the manifest it plays.
+     *
+     * The audio is AC-4. Whether it arrives depends on the binary: a build that decodes it
+     * brings the sound with it, and without one the picture is taken alone. See
+     * broadbandArguments().
      *
      * @return array<string, mixed>
      */
@@ -142,7 +139,7 @@ class LiveStreams
                     throw new ApiException("Already playing $this->maxStreams streams, the most allowed (MAX_STREAMS)", 409);
                 }
 
-                $session = $this->spawn($id, $this->videoOnlyArguments($url, "$this->directory/$id"), [
+                $session = $this->spawn($id, $this->broadbandArguments($url, "$this->directory/$id"), [
                     'id'              => $id,
                     'host'            => $label,
                     'tuner'           => null,
@@ -456,7 +453,7 @@ class LiveStreams
      *
      * @return string[]
      */
-    private function videoOnlyArguments(string $source, string $directory): array
+    private function broadbandArguments(string $source, string $directory): array
     {
         $sound   = $this->canDecodeAc4();
         $top     = $this->renditions[0];
