@@ -184,8 +184,14 @@ class Atsc3LineupTest extends TestCase
     /**
      * @return array<string, mixed>
      */
-    private function station(string $virtual, string $name, bool $drm = true, bool $broadband = false, ?string $streamUrl = null): array
-    {
+    private function station(
+        string $virtual,
+        string $name,
+        bool $drm = true,
+        bool $broadband = false,
+        ?string $streamUrl = null,
+        ?string $appUrl = null
+    ): array {
         return [
             'virtual'    => $virtual,
             'name'       => $name,
@@ -194,8 +200,41 @@ class Atsc3LineupTest extends TestCase
             'drm'        => $drm,
             'broadband'  => $broadband,
             'streamUrl'  => $streamUrl,
+            'appUrl'     => $appUrl,
             'hd'         => true,
         ];
+    }
+
+    public function testAStationRemembersWhereItsApplicationIs(): void
+    {
+        $this->store->saveAtsc3Lineup(self::DEVICE, [
+            $this->station('102.1', 'WPBT-HD', drm: false, broadband: true, appUrl: 'http://tv.example:8081/app'),
+        ], GuideStore::ATSC3_SOURCE_SLT);
+
+        $this->assertSame('http://tv.example:8081/app', $this->guideChannel('102.1')['appUrl']);
+    }
+
+    public function testAnEncryptedStationStillCarriesItsApplication(): void
+    {
+        // The point of keeping this separate from streamUrl. An encrypted station cannot be
+        // tuned here at all, and its application is the only way its programming can be
+        // watched, so the address has to survive on exactly the rows that cannot be played.
+        $this->store->saveAtsc3Lineup(self::DEVICE, [
+            $this->station('106.1', 'WTVJ-DT', appUrl: 'http://tv.example:8082/app'),
+        ], GuideStore::ATSC3_SOURCE_SLT);
+
+        $station = $this->guideChannel('106.1');
+
+        $this->assertTrue($station['encrypted']);
+        $this->assertNull($station['streamUrl']);
+        $this->assertSame('http://tv.example:8082/app', $station['appUrl']);
+    }
+
+    public function testAStationWithNoApplicationHasNone(): void
+    {
+        $this->save();
+
+        $this->assertNull($this->guideChannel('104.1')['appUrl']);
     }
 
     public function testAStationDeliveredOverBroadbandSaysSo(): void

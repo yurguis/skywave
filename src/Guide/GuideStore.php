@@ -162,8 +162,8 @@ class GuideStore
 
             $insert = $this->db->prepare(
                 'INSERT OR REPLACE INTO atsc3_channels
-                    (device, virtual, name, video_codec, audio_codec, drm, broadband, hd, source, stream_url, updated_at)
-                 VALUES (:device, :virtual, :name, :video, :audio, :drm, :broadband, :hd, :source, :stream, :now)'
+                    (device, virtual, name, video_codec, audio_codec, drm, broadband, hd, source, stream_url, app_url, updated_at)
+                 VALUES (:device, :virtual, :name, :video, :audio, :drm, :broadband, :hd, :source, :stream, :app, :now)'
             );
 
             foreach ($channels as $channel) {
@@ -178,6 +178,7 @@ class GuideStore
                     'hd'        => empty($channel['hd']) ? 0 : 1,
                     'source'    => $source,
                     'stream'    => $channel['streamUrl'] ?? null,
+                    'app'       => $channel['appUrl'] ?? null,
                     'now'       => $now,
                 ]);
             }
@@ -226,7 +227,13 @@ class GuideStore
             // Where its media is served, when the broadcast says so. Only some ATSC 3.0
             // services carry their media over the internet; the rest have none.
             'streamUrl' => $row['stream_url'] ?? null,
-            'events'    => [],
+            // The station's own interactive application, where one is reachable. Worth
+            // having even for an encrypted station that cannot be played here at all: the
+            // application draws its programming from the broadcaster's broadband service
+            // rather than from the air, so it is the only way those stations can be
+            // watched. Null unless something has found the address and stored it.
+            'appUrl' => $row['app_url'] ?? null,
+            'events' => [],
         ], $statement === false ? [] : $statement->fetchAll());
     }
 
@@ -776,6 +783,7 @@ class GuideStore
             'source'     => "TEXT NOT NULL DEFAULT 'lineup'",
             'broadband'  => 'INTEGER NOT NULL DEFAULT 0',
             'stream_url' => 'TEXT',
+            'app_url'    => 'TEXT',
         ]);
     }
 
