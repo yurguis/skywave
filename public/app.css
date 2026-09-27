@@ -972,6 +972,13 @@ button.record.is-recording,
 @media (max-width: 520px) {
   .list-table .cell-show .art { display: none; }
   .list-table .actions { justify-content: flex-start; }
+
+  /* The date is the one unbreakable token in the row: "Sat, Sep 26, 11:29 PM" cannot
+     wrap, so on a phone it claims the width the title needed and the show is left to
+     break a word per line -- with the badges stacking after it, a single row ran to
+     several hundred pixels and three recordings filled the screen. Two short lines here
+     cost nothing, and the badges flow after the title again once the column has room. */
+  .list-table .cell-when { white-space: normal; }
 }
 
 @media (max-width: 520px) {
