@@ -22,9 +22,11 @@ services:
   web:
     environment:
       # A second binary, used only for the AC-4 stations. Every other channel and
-      # every recording keeps using the ffmpeg in the image, which is far newer:
-      # the patch exists only for 6.1, and nothing else should be dragged back two
-      # major versions to gain sound on two stations.
+      # every recording keeps using the ffmpeg in the image. The two are now the
+      # same major version -- this one is librempeg, an 8.x fork -- so the split is
+      # no longer forced by a version pin, but it stays: only these stations need
+      # AC-4, and routing every channel and every recording through a fork is a far
+      # larger commitment than decoding audio for two of them.
       #
       # The path must not contain the string "ffmpeg" anywhere but the filename.
       # Recording derives its probe binary with str_replace('ffmpeg', 'ffprobe',
