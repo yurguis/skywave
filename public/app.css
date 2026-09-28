@@ -750,16 +750,27 @@ details > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 .guide-empty-play:hover:not(:disabled) { border-color: var(--accent); }
 .guide-empty-play:disabled { opacity: .5; cursor: default; }
 
-/* Beside the play control and built to the same metrics, so the two read as a pair. An
-   anchor rather than a button, which is why the centring and the underline are spelled
-   out here: a link that opens the station's own application in a new tab. */
-.guide-empty-app {
+/* The channel number and the link to the station's application share a line, so the name
+   below can go on truncating on its own. */
+.guide-channel-headline {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+/* A link to the station's own application, in the channel cell beside the number. An anchor
+   rather than a button, which is why the centring and the underline are spelled out here.
+   Smaller than the play control it used to sit beside: here it shares a line with 13px text
+   in a grid whose rows line up with the track, and at 22px it pushed the rows that have an
+   application taller than the rows that do not. */
+.channel-app {
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   border: 1px solid var(--border);
   border-radius: 50%;
   background: var(--surface-2);
@@ -769,7 +780,7 @@ details > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
   text-decoration: none;
 }
 
-.guide-empty-app:hover { border-color: var(--accent); }
+.channel-app:hover { border-color: var(--accent); }
 /* One size for all three. The HD pill kept the smaller type and tighter padding it was
    given back when it sat alone against the channel name, which left it visibly shorter
    than the 3.0 and DRM pills once it had neighbours. The compact metrics win here, since
@@ -850,8 +861,16 @@ details > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 .guide-details-head h3 { margin-right: auto; }
 .guide-details-head .channel-logo { width: 44px; height: 34px; }
 
+/* On a phone the cell had about 86px of content box to hold a 34px logo, two 6px gaps and a
+   badge column, which left roughly ten for the name -- so the number and call sign, the two
+   things the column exists to show, were the parts that disappeared. The logo goes instead:
+   it is the largest fixed item and the only one the number and call sign already say. The
+   column widens a little as well, which costs visible track but not layout, since the grid
+   has a 760px minimum and scrolls sideways regardless. */
 @media (max-width: 520px) {
-  .guide-row { grid-template-columns: 110px minmax(0, 1fr); }
+  .guide-row { grid-template-columns: 132px minmax(0, 1fr); }
+  .guide-channel .channel-logo,
+  .guide-channel .channel-logo-none { display: none; }
 }
 
 /* Recordings */
