@@ -506,10 +506,25 @@ class LiveStreams
             // through preserved the backwards jumps this stream sends, which is what left
             // the picture on an invented clock; resampling to a fixed rate absorbs them.
             //
-            // In principle that costs a repeated or dropped frame wherever a jump lands.
-            // Measured, it costs neither: ffmpeg reported no duplicates and no drops, and
-            // the output runs at a clean 59.94 with exactly 120 frames in every two-second
-            // segment. The jumps are absorbed without manufacturing anything.
+            // It is not free. An earlier note here said it cost no duplicates and no drops;
+            // that was wrong. Six minutes of 102.1 drops 10,918 frames, because the source
+            // re-delivers fragments -- video timestamps jump back about one 2.002s fragment
+            // roughly every forty seconds -- and a constant rate has nowhere to put a frame
+            // that is already in the past.
+            //
+            // Kept because it is still the best of everything tried. Measured as frozen
+            // picture rather than as dropped frames, which turned out to be a poor proxy:
+            // +igndts cut the drop rate almost sevenfold and froze the picture for longer.
+            //
+            //     source as delivered (-c copy)    4.8%   <- the feed's own freezing
+            //     cfr, this setting                6.4%
+            //     -fflags +igndts                  8.5%
+            //     -fps_mode passthrough           21.0%
+            //     -fflags +genpts                 26.9%
+            //
+            // So about a point and a half of it is ours and the rest arrives that way.
+            // +genpts is the trap: it removes the drops exactly as advertised and replaces
+            // them with duplicates, and a duplicated frame is frozen picture.
             '-fps_mode', 'cfr',
             '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-crf', '21',
             '-force_key_frames', 'expr:gte(t,n_forced*2)', '-sc_threshold', '0',
