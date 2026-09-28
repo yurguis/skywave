@@ -8,6 +8,7 @@ declare(strict_types=1);
 namespace Skywave\Guide;
 
 use RuntimeException;
+use Skywave\Platform;
 
 /**
  * Background guide scans and collections (tools/guide.php), one at a time per device.
@@ -97,7 +98,8 @@ class GuideJobs
     /**
      * Start "scan" or "collect" for a device in the background.
      *
-     * @return bool false when a job is already running for the device
+     * @return bool false when a job is already running for the device, or when the one
+     *              started here never showed any sign of life
      */
     public function start(string $command, string $device): bool
     {
@@ -109,25 +111,37 @@ class GuideJobs
             return false;
         }
 
-        // setsid detaches the job from the web request that started it.
-        exec(sprintf(
-            'setsid %s %s %s %s > %s 2>&1 < /dev/null &',
-            escapeshellarg($this->php),
-            escapeshellarg($this->script),
-            $command,
-            escapeshellarg($device),
-            escapeshellarg($this->path($device, 'log'))
-        ));
+        $log = $this->path($device, 'log');
+
+        // Last run's output would otherwise look like this run starting.
+        @unlink($log);
+        @unlink(Platform::errorLog($log));
+
+        // Detaches the job from the web request that started it.
+        shell_exec(Platform::detachedCommand([$this->php, $this->script, $command, $device], $log));
 
         // Only report success once the job holds its lock, so a status request right after
-        // this one already sees it running. The job retries its lock while we look.
+        // this one already sees it running. It used to report success whatever happened,
+        // which is why a host that could not spawn at all -- Windows, where none of setsid,
+        // /dev/null or $! exist -- showed a job that had started, would never finish, and
+        // said nothing anywhere about why.
+        //
+        // The lock is the only trustworthy signal. Output is not: when the spawn itself
+        // fails on a POSIX host the shell writes "command not found" into this very log, so
+        // treating a log that has grown as proof of life would report exactly the failure
+        // this is here to catch. A job quick enough to finish inside the window is reported
+        // as not started, which a scan or a collect -- minutes of work -- never is.
         $deadline = microtime(true) + 3.0;
 
-        while (!$this->isRunning($device) && microtime(true) < $deadline) {
+        while (microtime(true) < $deadline) {
+            if ($this->isRunning($device)) {
+                return true;
+            }
+
             usleep(50000);
         }
 
-        return true;
+        return false;
     }
 
     /**

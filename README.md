@@ -455,6 +455,25 @@ anyone on the path.
 - **The guide comes from the broadcast**, so it covers only what your antenna receives:
   about twelve hours on a typical channel, a little over a day at the furthest. Station
   logos and programme pictures are fetched from the internet once and then served locally.
+- **Windows support is untested.** Playback, recordings and background guide jobs each start
+  a process that has to outlive the request, and the Windows path for that -- PowerShell's
+  `Start-Process` rather than `setsid`, `tasklist` and `taskkill` rather than signals -- has
+  never been run on Windows by anyone. Docker Desktop, or WSL2, is the tested route there.
+
+### Running without Docker
+
+Nothing here needs Docker; the image only packages it. Outside it you supply three things
+yourself:
+
+- **ffmpeg on `PATH`**, or `FFMPEG` pointing at it. Playback and recording shell out to it,
+  and nothing else in the page depends on it -- which is why a host without it loads
+  perfectly and plays nothing.
+- **The guide collector**, which nothing starts for you:
+  `php tools/guide.php run --interval=240`
+- **The recorder**, likewise: `php tools/recorder.php run --tick=10`
+
+The database, recordings and HLS working directory default to `data/guide.sqlite`,
+`data/recordings` and the system temp directory, so no volumes or paths need setting up.
 
 ## License
 

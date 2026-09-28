@@ -10,6 +10,7 @@ namespace Skywave\Web;
 use RuntimeException;
 use Skywave\Hdhomerun\ControlClient;
 use Skywave\Hdhomerun\Tuner;
+use Skywave\Platform;
 
 /**
  * Live playback sessions: one ffmpeg process per device, tuner, channel and program,
@@ -333,16 +334,18 @@ class LiveStreams
             throw new RuntimeException("Unable to create $directory");
         }
 
-        // setsid detaches ffmpeg from this PHP worker so it outlives the request; its pid
-        // is also its process group, which is what terminate() signals.
-        $pid = (int) trim((string) shell_exec(sprintf(
-            'setsid %s > %s 2>&1 < /dev/null & echo $!',
-            implode(' ', array_map('escapeshellarg', $arguments)),
-            escapeshellarg("$directory/ffmpeg.log")
-        )));
+        // Detached from this PHP worker so it outlives the request; the pid it reports is
+        // also its process group, which is what terminate() signals.
+        $pid = (int) trim((string) shell_exec(Platform::detachedCommand($arguments, "$directory/ffmpeg.log")));
 
         if ($pid <= 0) {
-            throw new RuntimeException('Unable to start ffmpeg');
+            // Say what went wrong rather than only that something did. The POSIX form
+            // reports the backgrounded subshell's pid, so this can come back positive even
+            // when ffmpeg is missing entirely, and then the log is the only witness.
+            throw new RuntimeException(sprintf(
+                'Unable to start ffmpeg (%s)',
+                self::lastLogLine("$directory/ffmpeg.log") ?? 'nothing was written to its log'
+            ));
         }
 
         return $session + [
@@ -635,6 +638,11 @@ class LiveStreams
             return false;
         }
 
+        if (Platform::isWindows()) {
+            // No ext-posix and no /proc here, so the process table is the only answer.
+            return str_contains((string) shell_exec(Platform::windowsRunningCommand($pid)), (string) $pid);
+        }
+
         if (is_dir('/proc/self')) {
             // Make sure the pid still belongs to an ffmpeg that has not exited.
             $cmdline = @file_get_contents("/proc/$pid/cmdline");
@@ -648,6 +656,13 @@ class LiveStreams
 
     private static function signal(int $pid, int $signal): void
     {
+        if (Platform::isWindows()) {
+            // Windows has no signals; SIGKILL becomes taskkill's /F.
+            exec(Platform::windowsKillCommand($pid, $signal === self::SIGKILL));
+
+            return;
+        }
+
         if (function_exists('posix_kill')) {
             posix_kill(-$pid, $signal);
 
@@ -778,8 +793,15 @@ class LiveStreams
      */
     private static function lastLogLine(string $file): ?string
     {
-        $lines = array_filter(
+        // Windows cannot send both streams to one file, so the other half sits beside it.
+        // On a POSIX host that file never exists and this reads exactly what it always did.
+        $written = array_merge(
             @file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [],
+            @file(Platform::errorLog($file), FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: []
+        );
+
+        $lines = array_filter(
+            $written,
             fn (string $line) => !preg_match('/Invalid frame dimensions 0x0|Last message repeated|corrupt decoded frame/', $line)
         );
 
