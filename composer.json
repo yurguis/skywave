@@ -12,6 +12,7 @@
     "require": {
         "php": ">=8.2",
         "ext-mbstring": "*",
+        "ext-pdo_sqlite": "*",
         "ext-simplexml": "*",
         "ext-zlib": "*",
         "symfony/http-foundation": "^5.4"

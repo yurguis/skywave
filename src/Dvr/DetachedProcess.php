@@ -8,13 +8,18 @@ declare(strict_types=1);
 namespace Skywave\Dvr;
 
 use RuntimeException;
+use Skywave\Platform;
 
 /**
  * An ffmpeg process that outlives the request or tick that started it.
  *
- * setsid puts the process in its own session, so it survives the PHP worker that spawned
- * it; the pid it reports is also its process group, which is what stop() signals. Only the
- * container that started a process can signal it: process ids do not cross containers.
+ * On a POSIX host setsid puts the process in its own session, so it survives the PHP worker
+ * that spawned it, and the pid it reports is also its process group, which is what stop()
+ * signals. Windows has neither, so it starts the process through PowerShell and stops it
+ * with taskkill; see Skywave\Platform, where both forms are built.
+ *
+ * Only the container that started a process can signal it: process ids do not cross
+ * containers.
  */
 class DetachedProcess
 {
@@ -27,14 +32,18 @@ class DetachedProcess
      */
     public static function start(array $arguments, string $logFile): int
     {
-        $pid = (int) trim((string) shell_exec(sprintf(
-            'setsid %s > %s 2>&1 < /dev/null & echo $!',
-            implode(' ', array_map('escapeshellarg', $arguments)),
-            escapeshellarg($logFile)
-        )));
+        $program = basename($arguments[0] ?? 'the process');
+        $pid     = (int) trim((string) shell_exec(Platform::detachedCommand($arguments, $logFile)));
 
         if ($pid <= 0) {
-            throw new RuntimeException('Unable to start ' . basename($arguments[0] ?? 'the process'));
+            // The POSIX form reports the backgrounded subshell's pid, so it can come back
+            // positive even when the program is missing; the log is the only place that
+            // says so. Naming it here saves the next person the hunt.
+            throw new RuntimeException(sprintf(
+                'Unable to start %s (%s)',
+                $program,
+                self::lastLogLine($logFile) ?? 'nothing was written to ' . $logFile
+            ));
         }
 
         return $pid;
@@ -44,6 +53,15 @@ class DetachedProcess
     {
         if ($pid <= 0) {
             return false;
+        }
+
+        if (Platform::isWindows()) {
+            // There is no ext-posix here and no /proc, so the process table is the only
+            // answer. tasklist filters by pid and prints the row, or an "INFO:" line when
+            // nothing matches, so the pid itself is what to look for.
+            $shown = (string) shell_exec(Platform::windowsRunningCommand($pid));
+
+            return str_contains($shown, (string) $pid);
         }
 
         if (is_dir('/proc/self')) {
@@ -84,8 +102,15 @@ class DetachedProcess
      */
     public static function lastLogLine(string $file): ?string
     {
-        $lines = array_filter(
+        // Windows cannot send both streams to one file, so the other half sits beside it.
+        // On a POSIX host that file never exists and this reads exactly what it always did.
+        $written = array_merge(
             @file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [],
+            @file(Platform::errorLog($file), FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: []
+        );
+
+        $lines = array_filter(
+            $written,
             fn (string $line) => !preg_match('/Invalid frame dimensions 0x0|Last message repeated|corrupt decoded frame/', $line)
         );
 
@@ -94,6 +119,13 @@ class DetachedProcess
 
     private static function signal(int $pid, int $signal): void
     {
+        if (Platform::isWindows()) {
+            // Windows has no signals; SIGKILL becomes taskkill's /F.
+            exec(Platform::windowsKillCommand($pid, $signal === self::SIGKILL));
+
+            return;
+        }
+
         if (function_exists('posix_kill')) {
             // A negative pid signals the whole process group, so ffmpeg's children go too.
             posix_kill(-$pid, $signal);
