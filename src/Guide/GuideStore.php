@@ -147,6 +147,11 @@ class GuideStore
      * nothing here can tune ATSC 3.0. Putting them there would have the collector trying to
      * tune physical channels that carry no transport stream.
      *
+     * An application address already stored survives a save that does not mention one. No
+     * source reports it -- neither the device lineup nor the broadcast -- so it is set from
+     * outside this table, and a refresh that has never heard of it would otherwise erase it
+     * every few hours.
+     *
      * @param list<array<string, mixed>> $channels
      */
     public function saveAtsc3Lineup(string $device, array $channels, string $source = self::ATSC3_SOURCE_LINEUP): void
@@ -154,6 +159,9 @@ class GuideStore
         $now = time();
 
         $this->transaction(function () use ($device, $channels, $now, $source): void {
+            // Read before the delete, which is what would otherwise take these with it.
+            $applications = $this->applicationUrls($device);
+
             // Each source is the whole truth for what it reports, and nothing more: clearing
             // only its own rows lets a second source describe stations the first never
             // mentions without the two erasing each other every few hours.
@@ -167,9 +175,11 @@ class GuideStore
             );
 
             foreach ($channels as $channel) {
+                $virtual = (string) $channel['virtual'];
+
                 $insert->execute([
                     'device'    => $device,
-                    'virtual'   => (string) $channel['virtual'],
+                    'virtual'   => $virtual,
                     'name'      => (string) $channel['name'],
                     'video'     => $channel['videoCodec'] ?? null,
                     'audio'     => $channel['audioCodec'] ?? null,
@@ -178,11 +188,33 @@ class GuideStore
                     'hd'        => empty($channel['hd']) ? 0 : 1,
                     'source'    => $source,
                     'stream'    => $channel['streamUrl'] ?? null,
-                    'app'       => $channel['appUrl'] ?? null,
+                    'app'       => $channel['appUrl'] ?? $applications[$virtual] ?? null,
                     'now'       => $now,
                 ]);
             }
         });
+    }
+
+    /**
+     * Each station's application address, by virtual channel.
+     *
+     * Keyed by virtual alone rather than by virtual and source: the table is unique on
+     * (device, virtual), so a station has one address whichever source last described it.
+     *
+     * @return array<string, string>
+     */
+    private function applicationUrls(string $device): array
+    {
+        $statement = $this->db->prepare('SELECT virtual, app_url FROM atsc3_channels WHERE device = ? AND app_url IS NOT NULL');
+        $statement->execute([$device]);
+
+        $urls = [];
+
+        foreach ($statement->fetchAll() as $row) {
+            $urls[(string) $row['virtual']] = (string) $row['app_url'];
+        }
+
+        return $urls;
     }
 
     /**
