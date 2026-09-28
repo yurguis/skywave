@@ -33,17 +33,18 @@ class DetachedProcess
     public static function start(array $arguments, string $logFile): int
     {
         $program = basename($arguments[0] ?? 'the process');
-        $pid     = (int) trim((string) shell_exec(Platform::detachedCommand($arguments, $logFile)));
+        $output  = (string) shell_exec(Platform::detachedCommand($arguments, $logFile));
+        $pid     = Platform::pidFromOutput($output);
 
         if ($pid <= 0) {
-            // The POSIX form reports the backgrounded subshell's pid, so it can come back
-            // positive even when the program is missing; the log is the only place that
-            // says so. Naming it here saves the next person the hunt.
-            throw new RuntimeException(sprintf(
-                'Unable to start %s (%s)',
-                $program,
-                self::lastLogLine($logFile) ?? 'nothing was written to ' . $logFile
-            ));
+            // Which witness survives depends on how far it got: the program's own log when
+            // it ran and failed, and what the shell printed when it never ran at all -- on
+            // Windows that is the only one there is, since the log is never created.
+            $printed = trim($output);
+            $why     = self::lastLogLine($logFile)
+                ?? ($printed === '' ? "it printed nothing and wrote no $logFile" : $printed);
+
+            throw new RuntimeException("Unable to start $program ($why)");
         }
 
         return $pid;

@@ -336,16 +336,19 @@ class LiveStreams
 
         // Detached from this PHP worker so it outlives the request; the pid it reports is
         // also its process group, which is what terminate() signals.
-        $pid = (int) trim((string) shell_exec(Platform::detachedCommand($arguments, "$directory/ffmpeg.log")));
+        $output = (string) shell_exec(Platform::detachedCommand($arguments, "$directory/ffmpeg.log"));
+        $pid    = Platform::pidFromOutput($output);
 
         if ($pid <= 0) {
-            // Say what went wrong rather than only that something did. The POSIX form
-            // reports the backgrounded subshell's pid, so this can come back positive even
-            // when ffmpeg is missing entirely, and then the log is the only witness.
-            throw new RuntimeException(sprintf(
-                'Unable to start ffmpeg (%s)',
-                self::lastLogLine("$directory/ffmpeg.log") ?? 'nothing was written to its log'
-            ));
+            // Say what went wrong rather than only that something did. Which witness
+            // survives depends on how far it got: ffmpeg's own log when it ran and failed,
+            // and what the shell printed when it never ran at all -- on Windows that is the
+            // only one there is, since the log is never created.
+            $printed = trim($output);
+            $why     = self::lastLogLine("$directory/ffmpeg.log")
+                ?? ($printed === '' ? 'it printed nothing and wrote no log' : $printed);
+
+            throw new RuntimeException("Unable to start ffmpeg ($why)");
         }
 
         return $session + [
