@@ -136,6 +136,30 @@ class Atsc3LineupTest extends TestCase
         $this->assertSame(['104.1', '2.1'], $virtuals);
     }
 
+    public function testARefreshKeepsAnApplicationAddressItDoesNotReport(): void
+    {
+        // Where an application lives is set from outside this table, and no source reports
+        // it. The guide re-saves the device's lineup every few hours, and that must not take
+        // the address with it: for an encrypted station the application is the only way its
+        // programming can be watched at all.
+        $this->save([$this->station('106.1', 'WTVJ-DT', appUrl: 'http://tv.example:8082/app')]);
+
+        $this->save([$this->station('106.1', 'WTVJ-DT')]);
+
+        $this->assertSame('http://tv.example:8082/app', $this->guideChannel('106.1')['appUrl']);
+    }
+
+    public function testAnApplicationAddressIsStillReplacedWhenOneIsReported(): void
+    {
+        // Keeping an address must not mean pinning it: a save that names one still wins, or
+        // an application that moves could never be corrected.
+        $this->save([$this->station('106.1', 'WTVJ-DT', appUrl: 'http://tv.example:8082/app')]);
+
+        $this->save([$this->station('106.1', 'WTVJ-DT', appUrl: 'http://tv.example:9090/app')]);
+
+        $this->assertSame('http://tv.example:9090/app', $this->guideChannel('106.1')['appUrl']);
+    }
+
     public function testASourceStillReplacesItsOwnRows(): void
     {
         $this->store->saveAtsc3Lineup(self::DEVICE, [$this->station('2.1', 'WPBT-HD')], GuideStore::ATSC3_SOURCE_SLT);
