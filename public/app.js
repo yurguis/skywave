@@ -1890,7 +1890,9 @@ function createGuideView(device, player) {
           // The badges are siblings of the name, not inside it: the name is what truncates,
           // and a badge within it was cut off along with the text it followed.
           h('span', { class: 'guide-channel-name' },
-            h('b', { class: 'guide-channel-number' }, channel.virtual),
+            h('span', { class: 'guide-channel-headline' },
+              h('b', { class: 'guide-channel-number' }, channel.virtual),
+              appLink(channel)),
             h('span', { class: 'guide-channel-call' }, channel.name)),
           h('span', { class: 'guide-channel-badges' },
             channel.hd && h('span', { class: 'badge hd' }, 'HD'),
@@ -2116,6 +2118,35 @@ function createGuideView(device, player) {
     }
   }
 
+  /**
+   * A link to the station's own application, where its address is known.
+   *
+   * Offered for encrypted stations as well: those cannot be tuned here at all, but the
+   * application serves the same programming from the broadcaster's broadband service, so
+   * it is the only way they can be watched.
+   *
+   * It sits in the channel cell rather than on an empty row. Most of these stations do
+   * carry listings -- the guide fills them from the channel they simulcast -- so an icon
+   * that only appeared where there were none was invisible on nearly every one of them.
+   *
+   * A new tab. The application is a separate experience, and navigating away would throw
+   * away whatever is playing.
+   */
+  function appLink(channel) {
+    if (!channel.appUrl) return null;
+
+    const label = `Open the ${channel.virtual} ${channel.name} app`;
+
+    return h('a', {
+      class: 'channel-app',
+      href: channel.appUrl,
+      target: '_blank',
+      rel: 'noopener',
+      title: label,
+      'aria-label': label,
+    }, '⧉');
+  }
+
   // Use a tuner already on the channel, or else an idle one.
   /**
    * What an empty row offers: a way to watch it where there is one, and a reason where
@@ -2146,21 +2177,6 @@ function createGuideView(device, player) {
         'aria-label': reason,
         onclick: (clickEvent) => (atsc3 ? watchAtsc3 : watch)(channel, clickEvent.currentTarget),
       }, '▶'),
-      // The station's own application, when its address is known. Offered for encrypted
-      // stations as well, beside a play control that stays disabled: those cannot be tuned
-      // here at all, but the application serves the same programming from the broadcaster's
-      // broadband service, so it is the only way they can be watched.
-      //
-      // A new tab. The application is a separate experience, and navigating away would
-      // throw away whatever is playing.
-      channel.appUrl && h('a', {
-        class: 'guide-empty-app',
-        href: channel.appUrl,
-        target: '_blank',
-        rel: 'noopener',
-        title: `Open the ${channel.virtual} ${channel.name} app`,
-        'aria-label': `Open the ${channel.virtual} ${channel.name} app`,
-      }, '⧉'),
       h('span', {}, atsc3
         ? (playable ? 'ATSC 3.0 · no programme data' : 'ATSC 3.0 — cannot be tuned here')
         : 'No guide data'),
