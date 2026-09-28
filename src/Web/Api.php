@@ -145,6 +145,18 @@ class Api
             return self::json(['error' => $e->getMessage()], 502);
         } catch (InvalidArgumentException $e) {
             return self::json(['error' => $e->getMessage()], 400);
+        } catch (RuntimeException $e) {
+            // Thirty-odd places raise one of these with a message written for whoever is
+            // looking: a drive that has gone away, a recording still running, no room left,
+            // a logo service that cannot be reached. None of them reached the page. An
+            // uncaught exception is a blank 500, so the reason only ever existed in a
+            // server log, and the page could say nothing better than that something failed.
+            //
+            // ApiException extends this and is caught above, so it keeps its own status;
+            // this is the floor under everything else. Deliberately not Throwable: a
+            // TypeError is a bug here rather than a condition worth reporting, and it
+            // should stay as loud as it is.
+            return self::json(['error' => $e->getMessage()], 500);
         }
     }
 
