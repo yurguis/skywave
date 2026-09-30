@@ -22,7 +22,12 @@ use Skywave\HlsLadder;
  * Sessions live beside the recordings, not in the tmpfs the live streams use: an hour of
  * video does not belong in memory.
  *
- *   <recordings>/.playback/<recording id>/index.m3u8   playlist, plus seg_NNNNN.ts
+ * Each size is written as one file rather than a numbered run of segments, with the
+ * playlist pointing at byte ranges inside it. Three hours at four-second segments is 2,700
+ * files per size otherwise, and the browser asks for a range either way.
+ *
+ *   <recordings>/.playback/<recording id>/index.m3u8   the sizes on offer
+ *   <recordings>/.playback/<recording id>/v0.m3u8      one size, as ranges of v0.ts
  *   <recordings>/.playback/<recording id>/session.json ffmpeg's pid and who is watching
  */
 class RecordingPlayback
@@ -179,9 +184,15 @@ class RecordingPlayback
      */
     public function resolveFile(int $recordingId, string $file): ?string
     {
-        // index.m3u8 is the playlist, or the master listing one per language; seg_ files
-        // come from a recording with a single track, v0/v1 from one with several.
-        if ($recordingId < 1 || !preg_match('/^(index\.m3u8|seg_\d{5}\.ts|v\d+\.m3u8|v\d+_\d{5}\.ts)$/', $file)) {
+        // index.m3u8 is the playlist, or the master listing one per size and language; seg
+        // comes from a recording with a single track and size, v0/v1 from one with several.
+        //
+        // The numbered forms are what a session written before segments were kept in one
+        // file looks like. They are still served so that a recording somebody is watching
+        // across an upgrade does not stop halfway through.
+        $names = '/^(index\.m3u8|seg\.ts|seg_\d{5}\.ts|v\d+\.m3u8|v\d+\.ts|v\d+_\d{5}\.ts)$/';
+
+        if ($recordingId < 1 || !preg_match($names, $file)) {
             return null;
         }
 
@@ -412,12 +423,18 @@ class RecordingPlayback
             // An event playlist only grows, so the viewer can seek across everything
             // converted so far while the rest is still being written.
             '-hls_playlist_type', 'event',
-            '-hls_flags', 'independent_segments',
+            // One file per size rather than one per segment, with the playlist pointing at
+            // byte ranges inside it. A three-hour recording at four-second segments is
+            // 2,700 files for each size it is offered at, and they are working state nobody
+            // ever looks at; this makes it one. The player fetches ranges instead of whole
+            // files, which is served already -- the route answers 206 with a Content-Range.
+            '-hls_flags', 'independent_segments+single_file',
             // Every size, and every language, becomes its own playlist. The audio group is
             // what lets a player offer the languages against any of the sizes.
             '-var_stream_map', implode(' ', $streams),
             '-master_pl_name', 'index.m3u8',
-            '-hls_segment_filename', "$directory/v%v_%05d.ts",
+            // No counter in the name: there is one file, not a numbered run of them.
+            '-hls_segment_filename', "$directory/v%v.ts",
             "$directory/v%v.m3u8",
         ]);
     }
@@ -448,8 +465,10 @@ class RecordingPlayback
             // An event playlist only grows, so the viewer can seek across everything
             // converted so far while the rest is still being written.
             '-hls_playlist_type', 'event',
-            '-hls_flags', 'independent_segments',
-            '-hls_segment_filename', "$directory/seg_%05d.ts",
+            // One file, with the playlist pointing at byte ranges inside it; see the note
+            // on the same flag above.
+            '-hls_flags', 'independent_segments+single_file',
+            '-hls_segment_filename', "$directory/seg.ts",
             "$directory/index.m3u8",
         ];
     }
