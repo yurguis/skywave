@@ -161,7 +161,8 @@ if (preg_match('#^/recordings/(\d+)/(?:hls/([^/]+)|(file))$#', $path, $match)) {
     // ?download asks the browser to save it rather than play it. Ranges still work, so an
     // interrupted download of a several-gigabyte recording can be resumed.
     if (isset($_GET['download'])) {
-        $name = str_replace(['"', "\r", "\n"], '', basename($file));
+        // Named after the recording, not after the playlist's v0.ts.
+        $name = str_replace(['"', "\r", "\n"], '', $playback->downloadName((int) $match[1], $file));
         header('Content-Disposition: attachment; filename="' . $name . '"');
     }
 

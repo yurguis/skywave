@@ -2542,13 +2542,7 @@ function createRecordingsView(device, player) {
                 class: 'watch',
                 onclick: (clickEvent) => playRecording(recording, clickEvent.currentTarget),
               }, '▶ Play'),
-              recording.bytes > 0 && h('button', {
-                type: 'button',
-                class: 'secondary',
-                title: 'Save it to this device',
-                // Content-Disposition makes the browser save it, so the page stays put.
-                onclick: () => { window.location.href = `/recordings/${recording.id}/file?download=1`; },
-              }, '⤓ Download'),
+              recording.bytes > 0 && downloadControl(recording),
               convertControl(recording),
               h('button', {
                 type: 'button',
@@ -2665,6 +2659,70 @@ function createRecordingsView(device, player) {
     );
 
     return choice;
+  }
+
+  /**
+   * Save a recording, at a size.
+   *
+   * A converted copy holds each size as a single file, so there is usually more than the
+   * broadcast to offer: the smaller ones are H.264 and a fraction of the size, and play on
+   * a phone where the broadcast's MPEG-2 and AC-3 will not. Which sizes exist depends on
+   * the recording, so they are asked for rather than assumed, and only when the button is
+   * pressed -- reading them for every row on every poll would mean touching the drive
+   * constantly for something almost nobody clicks.
+   */
+  function downloadControl(recording) {
+    const button = h('button', {
+      type: 'button',
+      class: 'secondary',
+      title: 'Save it to this device',
+      onclick: () => offer(),
+    }, '⤓ Download');
+
+    async function offer() {
+      button.disabled = true;
+
+      let downloads;
+
+      try {
+        ({ downloads } = await api(`/api/recordings/${recording.id}/downloads`));
+      } catch (error) {
+        button.disabled = false;
+        showError(error);
+
+        return;
+      }
+
+      // Nothing to choose between: behave exactly as the button always did.
+      if (downloads.length < 2) {
+        button.disabled = false;
+        // Content-Disposition makes the browser save it, so the page stays put.
+        window.location.href = downloads[0]?.url ?? `/recordings/${recording.id}/file?download=1`;
+
+        return;
+      }
+
+      const choice = h('select', {
+        class: 'record-format',
+        'aria-label': `Download ${recording.title}`,
+        onchange: () => {
+          if (!choice.value) return;
+
+          window.location.href = choice.value;
+          choice.value = '';
+        },
+      },
+        h('option', { value: '' }, '⤓ Download…'),
+        ...downloads.map((one) => h('option', {
+          value: one.url,
+          title: one.detail,
+        }, `${one.name} · ${formatBytes(one.bytes)}`)));
+
+      button.replaceWith(choice);
+      choice.focus();
+    }
+
+    return button;
   }
 
   async function convert(recording, height, control) {

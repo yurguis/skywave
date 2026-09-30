@@ -220,6 +220,112 @@ class RecordingPlayback
     }
 
     /**
+     * The ways a recording can be handed over whole, largest first.
+     *
+     * The broadcast is always one of them and is the only copy with the surround sound and
+     * the picture exactly as aired. A copy converted ahead of time adds the rest: each size
+     * in it is written as a single file, so a rendition is already a playable file rather
+     * than something that would have to be stitched together -- H.264 and stereo AAC, which
+     * plays on a phone where the broadcast's MPEG-2 and AC-3 will not.
+     *
+     * @return list<array{name: string, url: string, bytes: int, detail: string}>
+     */
+    public function downloads(int $recordingId): array
+    {
+        $recording = $this->store->getRecording($recordingId);
+
+        if ($recording === null) {
+            return [];
+        }
+
+        $offers = [];
+        $source = $this->sourceFile($recordingId);
+
+        if ($source !== null) {
+            $offers[] = [
+                'name'   => str_ends_with($source, '.mp4') ? 'The copy' : 'As broadcast',
+                'url'    => "/recordings/$recordingId/file?download=1",
+                'bytes'  => (int) filesize($source),
+                'detail' => str_ends_with($source, '.mp4') ? 'H.264' : 'MPEG-2, and the only copy with surround',
+            ];
+        }
+
+        $stored = $this->storedPlaylist($recording);
+
+        if ($stored === null) {
+            return $offers;
+        }
+
+        foreach (self::renditionsIn($stored) as $file => $height) {
+            $path = "$stored/$file";
+
+            if (!is_file($path)) {
+                continue;
+            }
+
+            $offers[] = [
+                'name'   => $height . 'p',
+                'url'    => "/recordings/$recordingId/hls/$file?download=1",
+                'bytes'  => (int) filesize($path),
+                'detail' => 'H.264, stereo',
+            ];
+        }
+
+        return $offers;
+    }
+
+    /**
+     * The name to save a file under, which is the recording's rather than the playlist's.
+     *
+     * Inside a converted copy the files are called v0.ts and v1.ts, which says nothing about
+     * what is in them once it is sitting in somebody's downloads folder.
+     */
+    public function downloadName(int $recordingId, string $file): string
+    {
+        $recording = $this->store->getRecording($recordingId);
+        $stored    = $recording === null ? null : $this->storedPlaylist($recording);
+
+        if ($stored === null || dirname($file) !== $stored) {
+            return basename($file);
+        }
+
+        $height = self::renditionsIn($stored)[basename($file)] ?? null;
+
+        if ($height === null) {
+            return basename($file);
+        }
+
+        return preg_replace('/\.ts$/i', '', basename($recording['path'])) . " {$height}p.ts";
+    }
+
+    /**
+     * Which file holds which picture height, read from the master playlist.
+     *
+     * Only the video variants carry a RESOLUTION, so the audio-only ones listed beside them
+     * are left out by the same pass that finds the sizes.
+     *
+     * @return array<string, int>
+     */
+    private static function renditionsIn(string $directory): array
+    {
+        $master = @file_get_contents("$directory/index.m3u8");
+
+        if ($master === false) {
+            return [];
+        }
+
+        preg_match_all('/RESOLUTION=\d+x(\d+)[^\n]*\n(v\d+)\.m3u8/', $master, $found, PREG_SET_ORDER);
+
+        $sizes = [];
+
+        foreach ($found as $match) {
+            $sizes["$match[2].ts"] = (int) $match[1];
+        }
+
+        return $sizes;
+    }
+
+    /**
      * The directory of a copy converted ahead of time, or null when there is not one.
      *
      * RECORDING_CONVERT_TO=hls makes this instead of an mp4: a finished playlist the player
