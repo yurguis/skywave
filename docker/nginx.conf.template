@@ -14,7 +14,20 @@ http {
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
 
-    access_log /dev/stdout;
+    # Cloudflare names the real client in CF-Connecting-IP. Every request reaches nginx from
+    # the Docker gateway, so $remote_addr only ever says "the gateway" and cannot tell a
+    # phone on the far side of the internet from the machine this runs on; the header is the
+    # only thing that does. X-Forwarded-For is kept beside it for anything else in front.
+    #
+    # Logged, not trusted. Nothing here can tell a forged header from a real one -- every
+    # request arrives from the same address, so there is no proxy to believe and no client
+    # to disbelieve. Treating it as the client's address would let anything on the network
+    # choose what the log says about it. Reading it is safe; acting on it would not be.
+    log_format skywave '$remote_addr - $remote_user [$time_local] "$request" '
+                       '$status $body_bytes_sent "$http_referer" "$http_user_agent" '
+                       'cf="$http_cf_connecting_ip" xff="$http_x_forwarded_for"';
+
+    access_log /dev/stdout skywave;
     # A second copy where the page can read it. Filled in by the entrypoint only when the
     # data volume is writable: a log nginx cannot open would stop it from starting at all.
     @ACCESS_LOG@

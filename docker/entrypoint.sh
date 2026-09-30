@@ -32,7 +32,7 @@ if mkdir -p "$LOG_DIR" 2>/dev/null && [ -w "$LOG_DIR" ]; then
         : > "$LOG_DIR/access.log"
     fi
 
-    ACCESS_LOG="access_log $LOG_DIR/access.log;"
+    ACCESS_LOG="access_log $LOG_DIR/access.log skywave;"
 else
     echo "Cannot write $LOG_DIR; the page will have no web request log to show." >&2
 fi
