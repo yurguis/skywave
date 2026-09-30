@@ -160,7 +160,6 @@ if (preg_match('#^/recordings/(\d+)/download/(\d+)$#', $path, $match)) {
 
     header('Content-Type: video/mp4');
     header('Content-Disposition: attachment; filename="' . $name . '"');
-    header('X-Content-Type-Options: nosniff');
 
     passthru($plan['command']);
 
