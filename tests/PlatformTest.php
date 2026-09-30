@@ -29,6 +29,32 @@ class PlatformTest extends TestCase
         );
     }
 
+    public function testTheMacIsToldApartFromPhpItself(): void
+    {
+        $this->assertSame(PHP_OS_FAMILY === 'Darwin', Platform::isMac());
+        $this->assertFalse(Platform::isMac() && Platform::isWindows());
+    }
+
+    public function testTheMacCommandReachesForNohupBecauseThereIsNoSetsid(): void
+    {
+        // setsid is util-linux, which macOS does not ship. The command every spawn used
+        // started nothing there and reported a pid all the same, so it failed in silence.
+        $command = Platform::macDetachedCommand(['ffmpeg', '-i', 'x'], '/tmp/a.log');
+
+        $this->assertStringStartsWith('nohup ', $command);
+        $this->assertStringNotContainsString('setsid', $command);
+        $this->assertStringEndsWith('& echo $!', $command);
+    }
+
+    public function testStoppingTargetsAGroupOnlyWhereTheSpawnMadeOne(): void
+    {
+        // A negative pid means the process group, which takes ffmpeg's children with it.
+        // setsid makes the process a group leader; nohup does not. Keeping the negative
+        // form on macOS would signal whichever group the worker happens to sit in, or
+        // nothing at all, and the transcoder would go on running unreachable.
+        $this->assertSame(Platform::isMac() ? 42 : -42, Platform::signalTarget(42));
+    }
+
     public function testTheWindowsCommandAsksPowerShellForTheChildsOwnPid(): void
     {
         $script = $this->script(['ffmpeg.exe', '-i', 'x'], 'C:\\logs\\a.log');
@@ -193,9 +219,14 @@ class PlatformTest extends TestCase
     public function testTheHostPicksItsOwnForm(): void
     {
         $chosen = Platform::detachedCommand(['ffmpeg', '-i', 'x'], 'a.log');
-        $expect = Platform::isWindows()
-            ? Platform::windowsDetachedCommand(['ffmpeg', '-i', 'x'], 'a.log')
-            : Platform::posixDetachedCommand(['ffmpeg', '-i', 'x'], 'a.log');
+
+        if (Platform::isWindows()) {
+            $expect = Platform::windowsDetachedCommand(['ffmpeg', '-i', 'x'], 'a.log');
+        } elseif (Platform::isMac()) {
+            $expect = Platform::macDetachedCommand(['ffmpeg', '-i', 'x'], 'a.log');
+        } else {
+            $expect = Platform::posixDetachedCommand(['ffmpeg', '-i', 'x'], 'a.log');
+        }
 
         $this->assertSame($expect, $chosen);
     }
