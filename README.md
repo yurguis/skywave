@@ -200,7 +200,16 @@ php tools/recorder.php stop <id>         # stop one early, keeping the file
 
 A recording reserves its tuner for as long as it runs: live playback and guide updates
 skip that tuner instead of retuning it mid-recording. `RECORDING_PAD_START` and
-`RECORDING_PAD_END` add a margin around each program for broadcasts that run late.
+`RECORDING_PAD_END` add a margin around every program for broadcasts that run late.
+
+Sport needs more than a margin. A ball game scheduled for three hours regularly runs twenty
+minutes past it, and the broadcast guide is no help: the listing keeps its planned length
+however late the game ends, and the programmes after it keep their planned times, so there
+is nothing to read that says it overran. So the record buttons carry a **stop late** choice
+-- on time, or 15, 30 or 60 minutes after the listing says it ends. Choose it against a
+single showing, or against **All episodes** and every showing of that series gets it. It is
+only worth spending where a programme actually overruns: the recording holds its tuner for
+the whole of the extra time.
 
 Every recording keeps two things, and there is nothing to choose. The broadcast is written
 exactly as it was sent, which costs no CPU and keeps the original quality and captions

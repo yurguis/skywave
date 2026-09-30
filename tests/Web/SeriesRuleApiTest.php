@@ -143,6 +143,38 @@ class SeriesRuleApiTest extends TestCase
         $this->assertSame(405, $response['status']);
     }
 
+    public function testASeriesCanBeToldToKeepRecordingAfterTheDueEnd(): void
+    {
+        // Sport runs over and the guide never says so, so this is the only way to catch it.
+        $created = $this->send('POST', '/api/recordings/rules', $this->body(['padEnd' => 30 * 60]));
+
+        $this->assertSame(30 * 60, $created['body']['rule']['padEnd']);
+    }
+
+    public function testAnHourLateIsAllowedWhereItWasNot(): void
+    {
+        // Extra innings. Half an hour used to be the most that could be asked for.
+        $created = $this->send('POST', '/api/recordings/rules', $this->body(['padEnd' => 60 * 60]));
+
+        $this->assertSame(60 * 60, $created['body']['rule']['padEnd']);
+    }
+
+    public function testAnAbsurdOverrunIsBroughtBackIntoRange(): void
+    {
+        $created = $this->send('POST', '/api/recordings/rules', $this->body(['padEnd' => 99999]));
+
+        $this->assertSame(60 * 60, $created['body']['rule']['padEnd'], 'a typo cannot book the afternoon');
+    }
+
+    public function testStartingEarlyIsStillCappedAtHalfAnHour(): void
+    {
+        // Only the end was raised: starting an hour early holds a tuner for an hour to no
+        // purpose, and nothing overruns backwards.
+        $created = $this->send('POST', '/api/recordings/rules', $this->body(['padStart' => 60 * 60]));
+
+        $this->assertSame(30 * 60, $created['body']['rule']['padStart']);
+    }
+
     /**
      * @param array<string, mixed> $overrides
      * @return array<string, mixed>

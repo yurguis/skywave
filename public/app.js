@@ -2036,20 +2036,32 @@ function createGuideView(device, player) {
       }, '✓ Recording every episode · stop');
     }
 
+    // Sport runs over and the broadcast guide never says so: the listing keeps its planned
+    // length, and the programmes after it keep their planned times, however late it ends.
+    // So how much longer to keep recording is a judgement only the person watching can make.
+    const late = h('select', {
+      class: 'record-format',
+      'aria-label': 'Keep recording after it is due to end',
+      title: 'Keep recording after it is due to end, for a programme that runs over',
+    },
+      h('option', { value: '' }, 'Stop on time'),
+      ...[15, 30, 60].map((minutes) => h('option', { value: String(minutes * 60) }, `+${minutes} min`)));
+
     return h('span', { class: 'record-choice' },
       h('button', {
         type: 'button',
         class: 'secondary record',
         disabled: channel.atsc3 || channel.encrypted,
-        onclick: (clickEvent) => record(channel, event, clickEvent.currentTarget),
+        onclick: (clickEvent) => record(channel, event, clickEvent.currentTarget, late.value),
       }, onNow ? '● Record the rest' : '● Record'),
       h('button', {
         type: 'button',
         class: 'secondary record',
         disabled: channel.atsc3 || channel.encrypted,
         title: 'Record this whenever it is on this channel',
-        onclick: (clickEvent) => recordSeries(channel, event, clickEvent.currentTarget),
+        onclick: (clickEvent) => recordSeries(channel, event, clickEvent.currentTarget, late.value),
       }, '● All episodes'),
+      late,
     );
   }
 
@@ -2058,10 +2070,11 @@ function createGuideView(device, player) {
    * ahead, so the rule is kept and applied to each guide update rather than scheduling
    * anything far in advance.
    */
-  async function recordSeries(channel, event, button) {
+  async function recordSeries(channel, event, button, padEnd = '') {
     await recordingAction('/api/recordings/rules', {
       method: 'POST',
       body: JSON.stringify({
+        ...(padEnd === '' ? {} : { padEnd: Number(padEnd) }),
         device: host,
         physical: channel.physical,
         program: channel.program,
@@ -2084,10 +2097,11 @@ function createGuideView(device, player) {
 
   // The recorder picks and reserves a tuner when the program starts, so scheduling one
   // that is on now works the same as scheduling tomorrow's.
-  async function record(channel, event, button) {
+  async function record(channel, event, button, padEnd = '') {
     await recordingAction('/api/recordings', {
       method: 'POST',
       body: JSON.stringify({
+        ...(padEnd === '' ? {} : { padEnd: Number(padEnd) }),
         device: host,
         physical: channel.physical,
         program: channel.program,

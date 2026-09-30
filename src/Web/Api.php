@@ -1114,7 +1114,7 @@ class Api
             'days'        => self::weekdays($body['days'] ?? null),
             'timezone'    => is_string($body['timezone'] ?? null) && $body['timezone'] !== '' ? $body['timezone'] : 'UTC',
             'padStart'    => self::padding($body['padStart'] ?? null, 'RECORDING_PAD_START', 60),
-            'padEnd'      => self::padding($body['padEnd'] ?? null, 'RECORDING_PAD_END', 180),
+            'padEnd'      => self::padding($body['padEnd'] ?? null, 'RECORDING_PAD_END', 180, 3600),
         ];
 
         $id = $store->addRule($rule);
@@ -1204,7 +1204,7 @@ class Api
             'title'       => $title,
             'description' => is_string($body['description'] ?? null) ? $body['description'] : null,
             'padStart'    => self::padding($body['padStart'] ?? null, 'RECORDING_PAD_START', 60),
-            'padEnd'      => self::padding($body['padEnd'] ?? null, 'RECORDING_PAD_END', 180),
+            'padEnd'      => self::padding($body['padEnd'] ?? null, 'RECORDING_PAD_END', 180, 3600),
         ]);
 
         return ['scheduled' => true, 'id' => $id, 'schedule' => $store->getSchedule($id)];
@@ -1358,11 +1358,17 @@ class Api
      *
      * @param mixed $value
      */
-    private static function padding($value, string $variable, int $fallback): int
+    /**
+     * Seconds of margin around a program, as asked for or as the settings have it.
+     *
+     * @param int $maximum the most that can be asked for; a guard against a typo turning a
+     *                     half-hour program into an afternoon, not a considered limit
+     */
+    private static function padding($value, string $variable, int $fallback, int $maximum = 1800): int
     {
         $seconds = is_int($value) ? $value : (int) self::environmentValue($variable, (string) $fallback);
 
-        return max(0, min(1800, $seconds));
+        return max(0, min($maximum, $seconds));
     }
 
     private static function environmentValue(string $name, string $default): string
