@@ -56,11 +56,13 @@ class RecordingStoreTest extends TestCase
         $this->assertCount(1, $this->store->getSchedules());
     }
 
-    public function testAnUnknownFormatFallsBackToTheBroadcastAsSent(): void
+    public function testEveryScheduleKeepsTheBroadcastAndACopy(): void
     {
+        // There is nothing to ask for any more, and nothing sent is listened to: a showing
+        // keeps the broadcast as it was sent, and a copy a browser can play.
         $id = $this->store->addSchedule($this->schedule(['format' => 'wmv']));
 
-        $this->assertSame('ts', $this->store->getSchedule($id)['format']);
+        $this->assertSame(RecordingStore::KEPT, $this->store->getSchedule($id)['format']);
     }
 
     public function testPaddingBringsAScheduleForward(): void

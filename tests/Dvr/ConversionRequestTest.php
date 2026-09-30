@@ -44,9 +44,11 @@ class ConversionRequestTest extends TestCase
         $this->assertCount(1, $this->store->getRecordingsToConvert());
     }
 
-    public function testABothRecordingIsPickedUpWithoutAsking(): void
+    public function testARecordingIsPickedUpWithoutAsking(): void
     {
-        $this->addRecording(['format' => 'both']);
+        // What every recording is now marked as: the broadcast was kept, and a copy a
+        // browser can play is due once it has finished.
+        $this->addRecording(['format' => RecordingStore::KEPT]);
 
         $this->assertCount(1, $this->store->getRecordingsToConvert());
     }

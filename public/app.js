@@ -36,7 +36,6 @@ const state = {
 };
 
 const TAB_LABELS = { tuners: 'Tuners', guide: 'Guide', recordings: 'Recordings', logs: 'Logs' };
-const FORMAT_LABELS = { ts: 'Original', mp4: 'Browser-ready', both: 'Both' };
 /** Roughly ten hours of recording; below this the Recordings tab says so. */
 const LOW_SPACE_BYTES = 20e9;
 
@@ -2032,28 +2031,20 @@ function createGuideView(device, player) {
       }, '✓ Recording every episode · stop');
     }
 
-    const formats = state.recordingsView?.formats() ?? [];
-    const chosen = h('select', { class: 'record-format', 'aria-label': 'What to keep' },
-      formats.map((format) => h('option', {
-        value: format,
-        selected: format === (state.recordingsView?.defaultFormat() ?? 'ts'),
-      }, FORMAT_LABELS[format] ?? format)));
-
     return h('span', { class: 'record-choice' },
       h('button', {
         type: 'button',
         class: 'secondary record',
         disabled: channel.atsc3 || channel.encrypted,
-        onclick: (clickEvent) => record(channel, event, clickEvent.currentTarget, chosen.value),
+        onclick: (clickEvent) => record(channel, event, clickEvent.currentTarget),
       }, onNow ? '● Record the rest' : '● Record'),
       h('button', {
         type: 'button',
         class: 'secondary record',
         disabled: channel.atsc3 || channel.encrypted,
         title: 'Record this whenever it is on this channel',
-        onclick: (clickEvent) => recordSeries(channel, event, clickEvent.currentTarget, chosen.value),
+        onclick: (clickEvent) => recordSeries(channel, event, clickEvent.currentTarget),
       }, '● All episodes'),
-      formats.length > 1 && chosen,
     );
   }
 
@@ -2062,7 +2053,7 @@ function createGuideView(device, player) {
    * ahead, so the rule is kept and applied to each guide update rather than scheduling
    * anything far in advance.
    */
-  async function recordSeries(channel, event, button, format) {
+  async function recordSeries(channel, event, button) {
     await recordingAction('/api/recordings/rules', {
       method: 'POST',
       body: JSON.stringify({
@@ -2072,7 +2063,6 @@ function createGuideView(device, player) {
         virtual: channel.virtual,
         channelName: channel.name,
         title: event.title,
-        format,
         // The hours in a rule mean the hours where the person setting it lives, and keep
         // meaning that after the clocks change.
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -2089,7 +2079,7 @@ function createGuideView(device, player) {
 
   // The recorder picks and reserves a tuner when the program starts, so scheduling one
   // that is on now works the same as scheduling tomorrow's.
-  async function record(channel, event, button, format) {
+  async function record(channel, event, button) {
     await recordingAction('/api/recordings', {
       method: 'POST',
       body: JSON.stringify({
@@ -2103,7 +2093,6 @@ function createGuideView(device, player) {
         duration: event.duration,
         title: event.title,
         description: event.description ?? null,
-        format,
       }),
     }, button, 'Scheduling…');
   }
@@ -2467,17 +2456,6 @@ function createRecordingsView(device, player) {
           + (rule.earliest !== null && rule.latest !== null ? ` · ${clockOf(rule.earliest)}–${clockOf(rule.latest)}` : '')),
       ),
       h('span', { class: 'actions' },
-        // Only showings not yet scheduled follow this. The ones already queued were handed
-        // a copy of the format when they were made, so the title says what it changes.
-        h('select', {
-          class: 'secondary',
-          title: `What to keep for showings of ${rule.title} that are not scheduled yet`,
-          'aria-label': `What to keep for ${rule.title}`,
-          onchange: (changeEvent) => changeSeriesFormat(rule, changeEvent.currentTarget),
-        }, ...Object.entries(FORMAT_LABELS).map(([value, label]) => h('option', {
-          value,
-          selected: value === rule.format,
-        }, label))),
         h('button', {
           type: 'button',
           class: 'secondary',
@@ -2829,32 +2807,6 @@ function createRecordingsView(device, player) {
     act(`/api/recordings/${recording.id}`, { method: 'DELETE' }, button, 'Deleting…');
   }
 
-  /**
-   * Change what a series keeps from here on.
-   *
-   * Puts the old choice back when the server refuses, so the menu never shows something
-   * that was not saved.
-   */
-  async function changeSeriesFormat(rule, select) {
-    const chosen = select.value;
-
-    if (chosen === rule.format) return;
-
-    select.disabled = true;
-
-    try {
-      await api(`/api/recordings/rules/${rule.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ format: chosen }),
-      });
-      await load();
-    } catch (error) {
-      showError(error);
-      select.value = rule.format;
-      select.disabled = false;
-    }
-  }
-
   async function act(path, options, button, busyLabel) {
     const label = button.textContent;
     button.disabled = true;
@@ -2877,15 +2829,6 @@ function createRecordingsView(device, player) {
     /** Called after every refresh with what is going on, for the tab's recording dot. */
     onUpdate(callback) {
       updated = callback;
-    },
-
-    /** What the server can write, and what it writes unless told otherwise. */
-    formats() {
-      return data?.formats ?? [];
-    },
-
-    defaultFormat() {
-      return data?.defaultFormat ?? 'ts';
     },
 
     /** The standing rule covering a title on a channel, if there is one. */

@@ -872,11 +872,9 @@ class Api
             return [
                 'directory' => $this->recorder === null ? null : $this->recorder->getDirectory(),
                 // Recordings are large and the drive they live on may not even be attached.
-                'freeBytes'     => $free === false ? null : (int) $free,
-                'formats'       => RecordingStore::FORMATS,
-                'defaultFormat' => self::environmentValue('RECORDING_FORMAT', 'ts'),
-                'schedules'     => $store->getSchedules($device),
-                'recordings'    => self::withArtwork(self::withHdFlags($store->getRecordings($device), $this->guide)),
+                'freeBytes'  => $free === false ? null : (int) $free,
+                'schedules'  => $store->getSchedules($device),
+                'recordings' => self::withArtwork(self::withHdFlags($store->getRecordings($device), $this->guide)),
                 // Standing rules ride along with the list the page already polls.
                 'rules' => $store->getRules($device),
             ];
@@ -894,10 +892,6 @@ class Api
         }
 
         if (preg_match('#^/api/recordings/rules/(\d+)$#', $path, $match)) {
-            if ($method === 'PATCH') {
-                return $this->changeSeriesRule((int) $match[1], self::jsonBody($request));
-            }
-
             self::requireMethod($method, 'DELETE');
 
             return ['cancelled' => $store->deleteRule((int) $match[1])];
@@ -1102,12 +1096,6 @@ class Api
             throw new ApiException('Expected {"title": "<program>"}', 400);
         }
 
-        $format = is_string($body['format'] ?? null) ? $body['format'] : self::environmentValue('RECORDING_FORMAT', 'ts');
-
-        if (!in_array($format, RecordingStore::FORMATS, true)) {
-            throw new ApiException('Expected "format" to be one of: ' . implode(', ', RecordingStore::FORMATS), 400);
-        }
-
         $rule = [
             'device'      => self::validateHost(is_string($body['device'] ?? null) ? $body['device'] : ''),
             'physical'    => self::positiveInteger($body['physical'] ?? null, 'physical'),
@@ -1119,7 +1107,6 @@ class Api
             'latest'      => self::minuteOfDay($body['latest'] ?? null),
             'days'        => self::weekdays($body['days'] ?? null),
             'timezone'    => is_string($body['timezone'] ?? null) && $body['timezone'] !== '' ? $body['timezone'] : 'UTC',
-            'format'      => $format,
             'padStart'    => self::padding($body['padStart'] ?? null, 'RECORDING_PAD_START', 60),
             'padEnd'      => self::padding($body['padEnd'] ?? null, 'RECORDING_PAD_END', 180),
         ];
@@ -1134,33 +1121,6 @@ class Api
             'id'        => $id,
             'scheduled' => $scheduled,
         ];
-    }
-
-    /**
-     * Change what a series keeps, from here on.
-     *
-     * Showings already scheduled keep the format they were given: each one was handed a
-     * copy when it was made, and nothing ties a schedule back to the rule that made it.
-     * Changing those as well would mean finding them by what the rule looks for, which
-     * would also catch a showing somebody had scheduled by hand. Cancel and schedule those
-     * again to move them.
-     *
-     * @param array<string, mixed> $body
-     * @return array<string, mixed>
-     */
-    private function changeSeriesRule(int $id, array $body): array
-    {
-        $format = is_string($body['format'] ?? null) ? $body['format'] : '';
-
-        if (!in_array($format, RecordingStore::FORMATS, true)) {
-            throw new ApiException('Expected "format" to be one of: ' . implode(', ', RecordingStore::FORMATS), 400);
-        }
-
-        if (!$this->recordingStore()->updateRule($id, ['format' => $format])) {
-            throw new ApiException("No series rule with id $id", 404);
-        }
-
-        return ['changed' => true, 'format' => $format];
     }
 
     /**
@@ -1226,12 +1186,6 @@ class Api
             throw new ApiException('That program has already ended', 400);
         }
 
-        $format = is_string($body['format'] ?? null) ? $body['format'] : self::environmentValue('RECORDING_FORMAT', 'ts');
-
-        if (!in_array($format, RecordingStore::FORMATS, true)) {
-            throw new ApiException('Expected "format" to be one of: ' . implode(', ', RecordingStore::FORMATS), 400);
-        }
-
         $id = $store->addSchedule([
             'device'      => $device,
             'physical'    => self::positiveInteger($body['physical'] ?? null, 'physical'),
@@ -1245,7 +1199,6 @@ class Api
             'description' => is_string($body['description'] ?? null) ? $body['description'] : null,
             'padStart'    => self::padding($body['padStart'] ?? null, 'RECORDING_PAD_START', 60),
             'padEnd'      => self::padding($body['padEnd'] ?? null, 'RECORDING_PAD_END', 180),
-            'format'      => $format,
         ]);
 
         return ['scheduled' => true, 'id' => $id, 'schedule' => $store->getSchedule($id)];

@@ -103,7 +103,6 @@ class SeriesRules
                         'description' => $event['description'] ?? null,
                         'padStart'    => $rule['padStart'],
                         'padEnd'      => $rule['padEnd'],
-                        'format'      => $rule['format'],
                     ]);
                     $fromThisRule++;
                     $scheduled++;

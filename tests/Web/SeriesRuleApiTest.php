@@ -125,62 +125,22 @@ class SeriesRuleApiTest extends TestCase
         $this->assertSame('1,2,3,4,5', $created['body']['rule']['days']);
     }
 
-    public function testWhatASeriesKeepsCanBeChangedAfterItIsScheduled(): void
+    public function testARuleKeepsTheBroadcastAndACopy(): void
+    {
+        // Nothing to choose and nothing to change later: every showing a rule makes keeps
+        // the broadcast as it was sent, and a copy a browser can play.
+        $created = $this->send('POST', '/api/recordings/rules', $this->body());
+
+        $this->assertSame(RecordingStore::KEPT, $created['body']['rule']['format']);
+    }
+
+    public function testThereIsNoLongerAnythingToChangeOnARule(): void
     {
         $id = $this->send('POST', '/api/recordings/rules', $this->body())['body']['id'];
 
-        $changed = $this->send('PATCH', "/api/recordings/rules/$id", ['format' => 'both']);
+        $response = $this->send('PATCH', "/api/recordings/rules/$id", ['format' => 'mp4']);
 
-        $this->assertSame(200, $changed['status']);
-        $this->assertSame('both', $changed['body']['format']);
-        $this->assertSame('both', $this->recordings->getRules()[0]['format']);
-    }
-
-    public function testAFormatNothingRecordsInIsRefused(): void
-    {
-        $id = $this->send('POST', '/api/recordings/rules', $this->body())['body']['id'];
-
-        $response = $this->send('PATCH', "/api/recordings/rules/$id", ['format' => 'mkv']);
-
-        $this->assertSame(400, $response['status']);
-        $this->assertSame('ts', $this->recordings->getRules()[0]['format'], 'the rule is left alone');
-    }
-
-    public function testChangingARuleThatIsNotThereIsNotFound(): void
-    {
-        $response = $this->send('PATCH', '/api/recordings/rules/999', ['format' => 'both']);
-
-        $this->assertSame(404, $response['status']);
-    }
-
-    public function testShowingsAlreadyScheduledKeepWhatTheyWereGiven(): void
-    {
-        // Deliberate, and pinned here so it is not quietly changed. A schedule is handed a
-        // copy of the format when it is made and nothing ties one back to the rule that
-        // made it, so cascading would mean finding them by what the rule looks for -- which
-        // would also catch a showing somebody scheduled by hand.
-        $id = $this->send('POST', '/api/recordings/rules', $this->body())['body']['id'];
-
-        $this->recordings->addSchedule([
-            'device'      => '192.168.1.62',
-            'physical'    => 29,
-            'program'     => 3,
-            'virtual'     => '6.1',
-            'channelName' => 'WTVJ',
-            'eventId'     => null,
-            'start'       => time() + 3600,
-            'duration'    => 1800,
-            'title'       => 'Jeopardy!',
-            'description' => null,
-            'padStart'    => 60,
-            'padEnd'      => 180,
-            'format'      => 'ts',
-        ]);
-
-        $this->send('PATCH', "/api/recordings/rules/$id", ['format' => 'mp4']);
-
-        $this->assertSame('mp4', $this->recordings->getRules()[0]['format']);
-        $this->assertSame('ts', $this->recordings->getSchedules()[0]['format']);
+        $this->assertSame(405, $response['status']);
     }
 
     /**
@@ -197,7 +157,6 @@ class SeriesRuleApiTest extends TestCase
             'channelName' => 'WTVJ',
             'title'       => 'Jeopardy!',
             'timezone'    => 'America/New_York',
-            'format'      => 'ts',
         ];
     }
 

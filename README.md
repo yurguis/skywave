@@ -202,31 +202,29 @@ A recording reserves its tuner for as long as it runs: live playback and guide u
 skip that tuner instead of retuning it mid-recording. `RECORDING_PAD_START` and
 `RECORDING_PAD_END` add a margin around each program for broadcasts that run late.
 
-`RECORDING_FORMAT` decides what lands on disk. `ts` writes the broadcast exactly as it was
-sent, which costs no CPU and keeps the original quality and captions (about 1-4 GB an
-hour), and `mp4` converts while recording (about 2-3 CPU threads) for a file browsers play
-directly. Recordings are written to `RECORDINGS_DIR`, which must stay available: a folder
-on an external drive that is unplugged or asleep fails the recording with a clear reason
-rather than writing a broken file.
+Every recording keeps two things, and there is nothing to choose. The broadcast is written
+exactly as it was sent, which costs no CPU and keeps the original quality and captions
+(about 1-4 GB an hour); then, once the program ends, a copy a browser can play is made from
+it. Recordings are written to `RECORDINGS_DIR`, which must stay available: a folder on an
+external drive that is unplugged or asleep fails the recording with a clear reason rather
+than writing a broken file.
 
 Nothing is ever deleted for you. The Recordings tab shows how much room is left and says
 so when it runs low, and a recording refuses to start with less than 2 GB free; making
 room is left to you, because a recording deleted automatically is only missed afterwards.
 
-`both` records the broadcast untouched and then converts a browser-ready copy once the
-program ends, so no tuner time is spent on conversion and the original is kept. The copy is
-made in the background (about 20 times faster than playback) and used for playback when it
-is ready; until then the recording plays like any other `ts`. One copy is made at a time, so
-several programs ending in the same minute queue instead of competing for the machine.
+Converting after the program ends rather than during it means no tuner time is spent on it
+and the original is always kept. The copy is made in the background, and until it is ready
+the recording plays by converting on the fly, as it always did. One copy is made at a time,
+so several programs ending in the same minute queue instead of competing for the machine.
 
-`RECORDING_CONVERT_TO` chooses what that copy is. `mp4` is one file, close to the broadcast
-and with its surround sound intact -- the one to keep if you mean to keep it. `hls` writes a
-finished playlist and the sizes in `RECORDING_PLAYBACK_RENDITIONS` instead, which is what
-watching a `ts` recording would have produced on the fly, except that it is already there:
-the full length and a working seek bar the moment it opens, nothing transcoding while you
-watch, and a smaller picture to fall back on from outside the house. It is stereo, because a
-browser will not reliably decode 5.1, and it is a directory rather than a single file. Either
-way the broadcast is untouched.
+`RECORDING_CONVERT_TO` chooses what that copy is. `hls`, the default, writes a finished
+playlist and the sizes in `RECORDING_PLAYBACK_RENDITIONS`: the full length and a working
+seek bar the moment it opens, nothing transcoding while you watch, and a smaller picture to
+fall back on from outside the house. It is stereo, because a browser will not reliably
+decode 5.1, and it is a directory rather than a single file. `mp4` writes one file instead,
+close to the broadcast and with its surround sound intact. Either way the broadcast is
+untouched, and it is the one to open at home when you want exactly what was aired.
 
 **Download** saves a recording to whatever machine you are on, resuming rather than starting
 again if the connection drops. It gives you the mp4 copy when there is one, and the broadcast
@@ -360,11 +358,10 @@ Settings (environment variables):
 | `GUIDE_INTERVAL` | `240` | Minutes between automatic guide updates (guide service) |
 | `GUIDE_DB` | `/data/guide.sqlite` | Guide database (`data/guide.sqlite` outside Docker), which also holds recordings |
 | `RECORDINGS_DIR` | `./data/recordings` | Folder for recordings, mounted at `/recordings` in the containers |
-| `RECORDING_FORMAT` | `ts` | What to keep by default: `ts` as broadcast, `mp4` converted while recording, `both` (converted after it ends); each recording can override it |
-| `RECORDING_HEIGHT` | `720` | Picture height for `mp4` recordings |
+| `RECORDING_HEIGHT` | `720` | Picture height for an `mp4` copy |
 | `RECORDING_PLAYBACK_RENDITIONS` | `720` | Picture heights when converting a `ts` recording for watching, up to 4; several let a player drop to a smaller picture on a weak connection, and share one deinterlace |
 | `RECORDING_PLAYBACK_HEIGHT` | | The older name for a single height above; still read when the one above is unset |
-| `RECORDING_CONVERT_TO` | `mp4` | What a browser-ready copy is made as: `mp4` for one file that keeps the broadcast's surround sound, or `hls` for a finished playlist at the heights above, which opens with its full length and seek bar and needs no transcoding while you watch (stereo, and a directory rather than a file) |
+| `RECORDING_CONVERT_TO` | `hls` | What the browser-ready copy is made as: `mp4` for one file that keeps the broadcast's surround sound, or `hls` for a finished playlist at the heights above, which opens with its full length and seek bar and needs no transcoding while you watch (stereo, and a directory rather than a file) |
 | `RECORDING_PAD_START` / `RECORDING_PAD_END` | `60` / `180` | Seconds recorded before and after a program |
 | `RECORDER_TICK` | `10` | Seconds between recorder checks for due recordings |
 | `TLS_DIR` | `./certs` | Folder holding the certificate and key, mounted read-only at `/certs` |

@@ -22,10 +22,14 @@ use RuntimeException;
 class RecordingStore
 {
     /**
-     * "ts" keeps the broadcast as it was sent, "mp4" converts it for browsers while
-     * recording, and "both" records the broadcast and converts a copy once it ends.
+     * What a recording keeps, as the format column records it.
+     *
+     * There is nothing to choose any more: every recording keeps the broadcast as it was
+     * sent and a copy a browser can play, made once the program ends. The column stays
+     * because older recordings hold what they were made with -- "ts" for the broadcast
+     * alone, "mp4" for one converted while it recorded -- and both still play.
      */
-    public const FORMATS = ['ts', 'mp4', 'both'];
+    public const KEPT = 'both';
 
     /** A schedule waiting for its start time, then the recorder's outcome. */
     public const STATUS_SCHEDULED = 'scheduled';
@@ -101,7 +105,7 @@ class RecordingStore
             $schedule['description'] ?? null,
             $schedule['padStart'] ?? 0,
             $schedule['padEnd'] ?? 0,
-            in_array($schedule['format'] ?? 'ts', self::FORMATS, true) ? $schedule['format'] ?? 'ts' : 'ts',
+            self::KEPT,
             self::STATUS_SCHEDULED,
             $now,
             $now,
@@ -450,7 +454,7 @@ class RecordingStore
             $rule['latest'] ?? null,
             $rule['days'] ?? null,
             $rule['timezone'] ?? 'UTC',
-            in_array($rule['format'] ?? 'ts', self::FORMATS, true) ? $rule['format'] ?? 'ts' : 'ts',
+            self::KEPT,
             $rule['padStart'] ?? 0,
             $rule['padEnd'] ?? 0,
             $now,
@@ -500,42 +504,6 @@ class RecordingStore
     {
         $statement = $this->db->prepare('DELETE FROM rules WHERE id = ?');
         $statement->execute([$id]);
-
-        return $statement->rowCount() > 0;
-    }
-
-    /**
-     * Change a rule that is already scheduling showings.
-     *
-     * Only what is named here can be changed. Anything else in the array is ignored rather
-     * than written, so a stray key cannot reach a column it was never meant to.
-     *
-     * @param array<string, mixed> $fields
-     * @return bool false when the rule does not exist, or nothing given could be changed
-     */
-    public function updateRule(int $id, array $fields): bool
-    {
-        $columns     = ['format' => 'format'];
-        $assignments = [];
-        $parameters  = [];
-
-        foreach ($fields as $name => $value) {
-            if (isset($columns[$name])) {
-                $assignments[] = $columns[$name] . ' = ?';
-                $parameters[]  = $value;
-            }
-        }
-
-        if ($assignments === []) {
-            return false;
-        }
-
-        $assignments[] = 'updated_at = ?';
-        $parameters[]  = time();
-        $parameters[]  = $id;
-
-        $statement = $this->db->prepare('UPDATE rules SET ' . implode(', ', $assignments) . ' WHERE id = ?');
-        $statement->execute($parameters);
 
         return $statement->rowCount() > 0;
     }
