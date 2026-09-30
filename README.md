@@ -216,7 +216,8 @@ room is left to you, because a recording deleted automatically is only missed af
 `both` records the broadcast untouched and then converts a browser-ready copy once the
 program ends, so no tuner time is spent on conversion and the original is kept. The copy is
 made in the background (about 20 times faster than playback) and used for playback when it
-is ready; until then the recording plays like any other `ts`.
+is ready; until then the recording plays like any other `ts`. One copy is made at a time, so
+several programs ending in the same minute queue instead of competing for the machine.
 
 `RECORDING_CONVERT_TO` chooses what that copy is. `mp4` is one file, close to the broadcast
 and with its surround sound intact -- the one to keep if you mean to keep it. `hls` writes a

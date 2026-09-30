@@ -224,9 +224,33 @@ class Recorder
             $this->followConversion($recording);
         }
 
-        foreach ($this->store->getRecordingsToConvert() as $recording) {
-            $this->startConversion($recording);
+        $this->startNextConversion();
+    }
+
+    /**
+     * Start one conversion, and only when nothing is converting already.
+     *
+     * A conversion spreads itself across the cores on its own, so a second one running
+     * beside it makes both take about twice as long rather than getting more done, and both
+     * compete with whatever is being recorded at the time. Every "both" recording that ended
+     * in the same minute used to start a conversion of its own, all at once.
+     *
+     * The rest are not lost, only queued: whatever is still waiting is picked up on a later
+     * tick, oldest first.
+     */
+    private function startNextConversion(): void
+    {
+        if ($this->store->getConvertingRecordings() !== []) {
+            return;
         }
+
+        $waiting = $this->store->getRecordingsToConvert();
+
+        if ($waiting === []) {
+            return;
+        }
+
+        $this->startConversion($waiting[0]);
     }
 
     /**
