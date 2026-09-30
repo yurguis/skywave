@@ -1063,11 +1063,15 @@ function createPlayer(panel) {
   // A broadcast may carry a second language on its own audio track; hls.js offers them as
   // audio tracks once the master playlist names them.
   function audioLabel(track, index = 0) {
-    if (LANGUAGE_NAMES[track?.lang]) return LANGUAGE_NAMES[track.lang];
-    if (track?.lang) return track.lang.toUpperCase();
+    // An audio description is a second track in the same language, so without saying which
+    // is which the menu just offers "English" twice.
+    const described = (audioSources[index] ?? {}).described === true ? ' (described)' : '';
+
+    if (LANGUAGE_NAMES[track?.lang]) return LANGUAGE_NAMES[track.lang] + described;
+    if (track?.lang) return track.lang.toUpperCase() + described;
 
     // No language at all: say which track it is rather than the name ffmpeg gave it.
-    return `Track ${index + 1}`;
+    return `Track ${index + 1}${described}`;
   }
 
   function updateAudio() {
