@@ -128,12 +128,13 @@ class DetachedProcess
         }
 
         if (function_exists('posix_kill')) {
-            // A negative pid signals the whole process group, so ffmpeg's children go too.
-            posix_kill(-$pid, $signal);
+            // A negative pid signals the whole process group, so ffmpeg's children go too,
+            // where the spawn made it a group leader. On macOS nothing did.
+            posix_kill(Platform::signalTarget($pid), $signal);
 
             return;
         }
 
-        exec(sprintf('kill -%d -- -%d 2>/dev/null', $signal, $pid));
+        exec(sprintf('kill -%d -- %d 2>/dev/null', $signal, Platform::signalTarget($pid)));
     }
 }

@@ -29,14 +29,30 @@ final class Platform
     }
 
     /**
+     * macOS is POSIX, but not Linux, and the difference lands squarely on this class.
+     *
+     * It has no setsid -- that is util-linux, which macOS does not ship -- so the command
+     * every spawn used here started nothing at all, and said so nowhere. The container
+     * hides it: Alpine has setsid through busybox.
+     */
+    public static function isMac(): bool
+    {
+        return PHP_OS_FAMILY === 'Darwin';
+    }
+
+    /**
      * The command that starts a process detached, for this host.
      *
      * @param string[] $arguments the command and its arguments, unescaped
      */
     public static function detachedCommand(array $arguments, string $logFile): string
     {
-        return self::isWindows()
-            ? self::windowsDetachedCommand($arguments, $logFile)
+        if (self::isWindows()) {
+            return self::windowsDetachedCommand($arguments, $logFile);
+        }
+
+        return self::isMac()
+            ? self::macDetachedCommand($arguments, $logFile)
             : self::posixDetachedCommand($arguments, $logFile);
     }
 
@@ -55,6 +71,40 @@ final class Platform
             implode(' ', array_map('escapeshellarg', $arguments)),
             escapeshellarg($logFile)
         );
+    }
+
+    /**
+     * macOS, where there is no setsid to use.
+     *
+     * nohup detaches far enough: the process ignores the hangup it would be sent and is
+     * adopted when the worker that spawned it goes. What it does not do is make that
+     * process a group leader, which is what setsid was quietly also providing -- so the
+     * pid that comes back is a pid and nothing more. Stopping it has to target the pid
+     * rather than a group; see signalTarget().
+     *
+     * @param string[] $arguments
+     */
+    public static function macDetachedCommand(array $arguments, string $logFile): string
+    {
+        return sprintf(
+            'nohup %s > %s 2>&1 < /dev/null & echo $!',
+            implode(' ', array_map('escapeshellarg', $arguments)),
+            escapeshellarg($logFile)
+        );
+    }
+
+    /**
+     * What to signal to stop a spawned process.
+     *
+     * A negative pid means the whole process group, which is how ffmpeg's children are
+     * taken with it. That only works where the spawn made the process a group leader:
+     * setsid does, nohup does not. On macOS the negative form would signal whichever group
+     * the PHP worker happens to sit in, or fail outright, and the transcoder would carry
+     * on running with nothing left pointing at it.
+     */
+    public static function signalTarget(int $pid): int
+    {
+        return self::isMac() ? $pid : -$pid;
     }
 
     /**

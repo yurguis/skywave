@@ -682,12 +682,12 @@ class LiveStreams
         }
 
         if (function_exists('posix_kill')) {
-            posix_kill(-$pid, $signal);
+            posix_kill(Platform::signalTarget($pid), $signal);
 
             return;
         }
 
-        exec(sprintf('kill -%d -- -%d 2>/dev/null', $signal, $pid));
+        exec(sprintf('kill -%d -- %d 2>/dev/null', $signal, Platform::signalTarget($pid)));
     }
 
     /**
