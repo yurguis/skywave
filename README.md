@@ -351,7 +351,8 @@ Settings (environment variables):
 | `RECORDINGS_DIR` | `./data/recordings` | Folder for recordings, mounted at `/recordings` in the containers |
 | `RECORDING_FORMAT` | `ts` | What to keep by default: `ts` as broadcast, `mp4` converted while recording, `both` (converted after it ends); each recording can override it |
 | `RECORDING_HEIGHT` | `720` | Picture height for `mp4` recordings |
-| `RECORDING_PLAYBACK_HEIGHT` | `720` | Picture height when converting a `ts` recording for watching |
+| `RECORDING_PLAYBACK_RENDITIONS` | `720` | Picture heights when converting a `ts` recording for watching, up to 4; several let a player drop to a smaller picture on a weak connection, and share one deinterlace |
+| `RECORDING_PLAYBACK_HEIGHT` | | The older name for a single height above; still read when the one above is unset |
 | `RECORDING_PAD_START` / `RECORDING_PAD_END` | `60` / `180` | Seconds recorded before and after a program |
 | `RECORDER_TICK` | `10` | Seconds between recorder checks for due recordings |
 | `TLS_DIR` | `./certs` | Folder holding the certificate and key, mounted read-only at `/certs` |

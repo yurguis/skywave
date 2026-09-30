@@ -8,6 +8,7 @@ declare(strict_types=1);
 namespace Skywave\Dvr;
 
 use RuntimeException;
+use Skywave\HlsLadder;
 
 /**
  * Plays recordings back in a browser.
@@ -31,23 +32,38 @@ class RecordingPlayback
     /** More languages than this on one programme is not something to plan for. */
     private const MAXIMUM_AUDIO_TRACKS = 4;
 
+    /** More sizes than this is more encoding than watching one recording is worth. */
+    private const MAXIMUM_RENDITIONS = 4;
+
     private RecordingStore $store;
     private string $directory;
     private string $ffmpeg;
-    private int $height;
+    /** @var int[] picture heights, tallest first; one of them means no choice to make */
+    private array $renditions;
     private int $viewerTimeout;
 
-    public function __construct(RecordingStore $store, string $recordingsDirectory, string $ffmpeg = 'ffmpeg', int $height = 720, int $viewerTimeout = 60)
+    /**
+     * @param int[] $renditions picture heights to offer, in any order
+     */
+    public function __construct(RecordingStore $store, string $recordingsDirectory, string $ffmpeg = 'ffmpeg', array $renditions = [720], int $viewerTimeout = 60)
     {
+        $heights = array_values(array_unique(array_map(fn ($height) => max(144, min(2160, (int) $height)), $renditions)));
+        rsort($heights);
+
         $this->store         = $store;
         $this->directory     = rtrim($recordingsDirectory, '/') . '/.playback';
         $this->ffmpeg        = $ffmpeg;
-        $this->height        = max(144, min(2160, $height));
+        $this->renditions    = array_slice($heights === [] ? [720] : $heights, 0, self::MAXIMUM_RENDITIONS);
         $this->viewerTimeout = max(15, $viewerTimeout);
     }
 
     /**
-     * Settings from RECORDINGS_DIR, FFMPEG, RECORDING_PLAYBACK_HEIGHT and HLS_VIEWER_TIMEOUT.
+     * Settings from RECORDINGS_DIR, FFMPEG, RECORDING_PLAYBACK_RENDITIONS and
+     * HLS_VIEWER_TIMEOUT.
+     *
+     * RECORDING_PLAYBACK_HEIGHT named the single size this used to make and still works as
+     * one: a setting that was right before should not have to be rewritten to keep meaning
+     * what it meant.
      */
     public static function fromEnvironment(): self
     {
@@ -57,11 +73,13 @@ class RecordingPlayback
             return $value === false || $value === '' ? $default : $value;
         };
 
+        $sizes = $env('RECORDING_PLAYBACK_RENDITIONS', $env('RECORDING_PLAYBACK_HEIGHT', '720'));
+
         return new self(
             RecordingStore::fromEnvironment(),
             $env('RECORDINGS_DIR', dirname(__DIR__, 2) . '/data/recordings'),
             $env('FFMPEG', 'ffmpeg'),
-            (int) $env('RECORDING_PLAYBACK_HEIGHT', '720'),
+            array_map('intval', array_filter(array_map('trim', explode(',', $sizes)), 'ctype_digit')),
             (int) $env('HLS_VIEWER_TIMEOUT', '60')
         );
     }
@@ -360,37 +378,29 @@ class RecordingPlayback
     {
         $tracks = $this->audioTracks($source);
 
-        // Nothing to choose between: keep the simple single playlist the player already
-        // knows, rather than a master playlist describing one of everything.
-        if (count($tracks) < 2) {
+        // Nothing to choose between, in either sense: keep the single playlist the player
+        // already knows rather than a master describing one of everything.
+        if (count($tracks) < 2 && count($this->renditions) < 2) {
             return $this->singleTrackArguments($source, $directory);
         }
 
-        $maps     = [];
-        $variants = ['v:0,agroup:aud'];
-        $default  = self::defaultTrack($tracks);
-
-        foreach ($tracks as $index => $track) {
-            $maps[]  = '-map';
-            $maps[]  = "0:a:$index";
-            $variant = "a:$index,agroup:aud";
-
-            if ($track['language'] !== null) {
-                $variant .= ',language:' . $track['language'];
-            }
-
-            $variants[] = $variant . ($index === $default ? ',default:yes' : '');
-        }
+        [$graph, $outputs, $streams] = HlsLadder::plan($this->renditions, $tracks, self::defaultTrack($tracks));
 
         return array_merge([
             $this->ffmpeg, '-hide_banner', '-nostdin', '-loglevel', 'error',
             '-fflags', '+genpts+discardcorrupt',
             '-i', $source,
-            '-map', '0:v:0',
-        ], $maps, [
-            '-vf', sprintf('estdif=mode=frame:deint=interlaced,scale=w=-2:h=trunc(min(%d\,ih)/2)*2', $this->height),
+            '-filter_complex', implode(';', $graph),
+        ], $outputs, [
             '-fps_mode', 'passthrough',
             '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-crf', '21',
+        ], count($this->renditions) > 1 ? [
+            // Key frames where the segments are cut, so a player can change size at any of
+            // them. Recordings are cut into four-second segments, not live playback's two,
+            // and keyframes landing anywhere else leave the sizes unable to line up.
+            '-force_key_frames', sprintf('expr:gte(t,n_forced*%d)', self::SEGMENT_SECONDS),
+            '-sc_threshold', '0',
+        ] : [], [
             // Downmixed to stereo. A browser's media source does not reliably decode
             // 5.1 AAC: passing surround through left every channel that broadcasts it
             // stuck at buffering, with segments written and no error to show for it.
@@ -399,11 +409,13 @@ class RecordingPlayback
             '-c:a', 'aac', '-ac', '2',
             '-f', 'hls',
             '-hls_time', (string) self::SEGMENT_SECONDS,
+            // An event playlist only grows, so the viewer can seek across everything
+            // converted so far while the rest is still being written.
             '-hls_playlist_type', 'event',
             '-hls_flags', 'independent_segments',
-            // Each language becomes its own playlist in one audio group, which is how a
-            // player is able to offer them.
-            '-var_stream_map', implode(' ', $variants),
+            // Every size, and every language, becomes its own playlist. The audio group is
+            // what lets a player offer the languages against any of the sizes.
+            '-var_stream_map', implode(' ', $streams),
             '-master_pl_name', 'index.m3u8',
             '-hls_segment_filename', "$directory/v%v_%05d.ts",
             "$directory/v%v.m3u8",
@@ -422,7 +434,7 @@ class RecordingPlayback
             '-map', '0:v:0', '-map', '0:a:0',
             // Deinterlace a frame at a time, as live playback does, so the closed captions
             // that travel with each frame survive. Progressive material passes through.
-            '-vf', sprintf('estdif=mode=frame:deint=interlaced,scale=w=-2:h=trunc(min(%d\,ih)/2)*2', $this->height),
+            '-vf', sprintf('estdif=mode=frame:deint=interlaced,scale=w=-2:h=trunc(min(%d\,ih)/2)*2', $this->renditions[0]),
             '-fps_mode', 'passthrough',
             '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-crf', '21',
             // Downmixed to stereo. A browser's media source does not reliably decode
