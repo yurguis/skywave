@@ -75,7 +75,7 @@ class RecordingPlayback
     {
         $recording = $this->recording($recordingId);
 
-        if (self::playsAsIs($recording)) {
+        if ($this->playsAsIs($recording)) {
             return $this->describeFile($recording);
         }
 
@@ -109,7 +109,7 @@ class RecordingPlayback
     {
         $recording = $this->recording($recordingId);
 
-        if (self::playsAsIs($recording)) {
+        if ($this->playsAsIs($recording)) {
             return $this->describeFile($recording);
         }
 
@@ -214,9 +214,22 @@ class RecordingPlayback
      *
      * @param array<string, mixed> $recording
      */
-    private static function playsAsIs(array $recording): bool
+    private function playsAsIs(array $recording): bool
     {
-        return $recording['format'] === 'mp4' || ($recording['convertedPath'] ?? null) !== null;
+        if ($recording['format'] !== 'mp4' && ($recording['convertedPath'] ?? null) === null) {
+            return false;
+        }
+
+        // Only when there is nothing to choose between. Outside Safari a plain <video>
+        // gives no way to change audio track, so a file carrying a second language or an
+        // audio description played whichever ffmpeg wrote first and offered no way back:
+        // converting a recording quietly cost the viewer the choice. Those go through the
+        // playlist instead, which can name every track, at the price of transcoding again
+        // while it plays.
+        //
+        // The file that would be served carries the same tracks as the one read here:
+        // converting maps all of them, and a recording made straight to mp4 is this file.
+        return count($this->audioTracks($this->originalPath($recording))) < 2;
     }
 
     /**
@@ -243,7 +256,7 @@ class RecordingPlayback
      */
     private function start(array $recording): array
     {
-        $source = rtrim(dirname($this->directory), '/') . '/' . $recording['path'];
+        $source = $this->originalPath($recording);
 
         if (!is_file($source)) {
             throw new RuntimeException('The recording file is missing; the drive may be disconnected');
@@ -274,13 +287,13 @@ class RecordingPlayback
      * every one of them. They have to be counted before ffmpeg starts: naming a track that
      * is not there makes it write nothing at all.
      *
-     * @return list<array{language: ?string, channels: ?int}>
+     * @return list<array{language: ?string, channels: ?string, described: bool}>
      */
     private function audioTracks(string $file): array
     {
         $probe = str_replace('ffmpeg', 'ffprobe', $this->ffmpeg);
         $shown = (string) shell_exec(sprintf(
-            '%s -v error -select_streams a -show_entries stream=channels:stream_tags=language -of json %s 2>/dev/null',
+            '%s -v error -select_streams a -show_entries stream=channels:stream_disposition=visual_impaired:stream_tags=language -of json %s 2>/dev/null',
             escapeshellarg($probe),
             escapeshellarg($file)
         ));
@@ -293,10 +306,43 @@ class RecordingPlayback
             $tracks[] = [
                 'language' => $stream['tags']['language'] ?? null,
                 'channels' => $count === null ? null : self::channelLabel($count),
+                // An audio description is a second track in the same language, and the
+                // broadcast marks it rather than naming it. Without reading the mark both
+                // read as plain English and whichever came first won for good.
+                'described' => (bool) ($stream['disposition']['visual_impaired'] ?? false),
             ];
         }
 
         return $tracks;
+    }
+
+    /**
+     * The recording as it came off the air, which is what everything here reads.
+     *
+     * Converting writes a second file and leaves this one alone, so it stays the source
+     * both for playback and for counting what the broadcast carried.
+     *
+     * @param array<string, mixed> $recording
+     */
+    private function originalPath(array $recording): string
+    {
+        return rtrim(dirname($this->directory), '/') . '/' . $recording['path'];
+    }
+
+    /**
+     * Which track to offer first: the one that is not a description of the picture.
+     *
+     * @param list<array<string, mixed>> $tracks
+     */
+    private static function defaultTrack(array $tracks): int
+    {
+        foreach ($tracks as $index => $track) {
+            if (empty($track['described'])) {
+                return $index;
+            }
+        }
+
+        return 0;
     }
 
     /**
@@ -322,6 +368,7 @@ class RecordingPlayback
 
         $maps     = [];
         $variants = ['v:0,agroup:aud'];
+        $default  = self::defaultTrack($tracks);
 
         foreach ($tracks as $index => $track) {
             $maps[]  = '-map';
@@ -332,7 +379,7 @@ class RecordingPlayback
                 $variant .= ',language:' . $track['language'];
             }
 
-            $variants[] = $variant . ($index === 0 ? ',default:yes' : '');
+            $variants[] = $variant . ($index === $default ? ',default:yes' : '');
         }
 
         return array_merge([
@@ -424,7 +471,7 @@ class RecordingPlayback
             'segments' => $segments,
             'viewers'  => count($session['viewers']),
             // What each track was before it was converted, so the player can name them.
-            'audio' => $this->audioTracks(rtrim(dirname($this->directory), '/') . '/' . $recording['path']),
+            'audio' => $this->audioTracks($this->originalPath($recording)),
             'error' => $running || $segments > 0 ? null : (DetachedProcess::lastLogLine("$directory/ffmpeg.log") ?? 'The converter stopped'),
         ];
     }
