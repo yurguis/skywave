@@ -143,6 +143,30 @@ if (preg_match('#^/recordings/(\d+)/captions\.vtt$#', $path, $match)) {
     return;
 }
 
+// One size of a converted recording, with its sound. The picture and the languages are
+// separate files in a playlist, so they are muxed back together as this is sent: a stream
+// copy, nothing re-encoded. It is made as it goes, so there is no length to announce and no
+// resuming it -- unlike the recording itself below, which is a file and supports ranges.
+if (preg_match('#^/recordings/(\d+)/download/(\d+)$#', $path, $match)) {
+    $plan = RecordingPlayback::fromEnvironment()->downloadPlan((int) $match[1], (int) $match[2]);
+
+    if ($plan === null) {
+        http_response_code(404);
+
+        return;
+    }
+
+    $name = str_replace(['"', "\r", "\n"], '', $plan['name']);
+
+    header('Content-Type: video/mp4');
+    header('Content-Disposition: attachment; filename="' . $name . '"');
+    header('X-Content-Type-Options: nosniff');
+
+    passthru($plan['command']);
+
+    return;
+}
+
 if (preg_match('#^/recordings/(\d+)/(?:hls/([^/]+)|(file))$#', $path, $match)) {
     $playback = RecordingPlayback::fromEnvironment();
     $file     = ($match[3] ?? '') === 'file'

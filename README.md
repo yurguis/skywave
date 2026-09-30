@@ -234,13 +234,20 @@ records by transcoding as it goes -- the broadcast is always written as sent, so
 records without an original any more. Recordings already on disk are untouched and still
 play, whichever way they were made.
 
-**Download** saves a recording to whatever machine you are on, resuming rather than starting
-again if the connection drops. When the copy is a playlist it offers the sizes in it as well
-as the broadcast, because each size is written as one file and is already playable on its
-own: a 720p rung of an hour of 1080i runs to about a third of what the broadcast does, and
-it is H.264 and AAC, which a phone will play where MPEG-2 and AC-3 will not. The broadcast
-is still there, and is the only copy with the surround sound and the picture exactly as
-aired. Nothing is transcoded to answer -- every size offered already exists on disk.
+**Download** saves a recording to whatever machine you are on. When the copy is a playlist
+it offers the sizes in it as well as the broadcast: a 720p rung of an hour of 1080i runs to
+about a third of what the broadcast does, and it is H.264 and AAC, which a phone will play
+where MPEG-2 and AC-3 will not.
+
+A size arrives as an mp4 holding the picture and the sound together. In the playlist they
+are separate -- the languages live in renditions of their own, which is what lets the player
+offer them -- so the two are put back into one container as the download is sent. Nothing is
+re-encoded; it is a stream copy, and a programme takes well under a second of it. What it
+costs is that the file is made as it goes, so the browser shows no total and cannot resume
+it. The broadcast itself is a file on disk, and downloading that does resume.
+
+The broadcast is also the only copy with the surround sound and the picture exactly as
+aired; the sizes are stereo.
 
 **Convert** makes a browser-ready copy of a recording kept as broadcast, which is worth doing
 for the room it saves. Measured on a 1080i broadcast here: an hour takes about 2.8 GB as

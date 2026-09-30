@@ -256,6 +256,13 @@ class RecordingPlayback
             return $offers;
         }
 
+        $audio      = self::defaultAudioIn($stored);
+        $audioBytes = $audio === null ? 0 : (int) @filesize("$stored/$audio");
+
+        if ($audio === null) {
+            return $offers;
+        }
+
         foreach (self::renditionsIn($stored) as $file => $height) {
             $path = "$stored/$file";
 
@@ -264,9 +271,11 @@ class RecordingPlayback
             }
 
             $offers[] = [
-                'name'   => $height . 'p',
-                'url'    => "/recordings/$recordingId/hls/$file?download=1",
-                'bytes'  => (int) filesize($path),
+                'name' => $height . 'p',
+                'url'  => "/recordings/$recordingId/download/$height",
+                // The picture and the sound are separate files; what arrives is the two of
+                // them in one container, so the size is near enough their sum.
+                'bytes'  => (int) filesize($path) + $audioBytes,
                 'detail' => 'H.264, stereo',
             ];
         }
@@ -296,6 +305,81 @@ class RecordingPlayback
         }
 
         return preg_replace('/\.ts$/i', '', basename($recording['path'])) . " {$height}p.ts";
+    }
+
+    /**
+     * What to run to hand over one size, and what to call it.
+     *
+     * A size is picture only. HLS keeps the languages in renditions of their own and leaves
+     * the player to put the two together, which is right for playing and useless for a file
+     * somebody is taking away: on its own it is silent. So the two are muxed back together
+     * on the way out -- a stream copy, no re-encoding, which runs in well under a second for
+     * a programme and produces an mp4 rather than a transport stream, because that is what a
+     * phone expects.
+     *
+     * @return array{command: string, name: string}|null
+     */
+    public function downloadPlan(int $recordingId, int $height): ?array
+    {
+        $recording = $this->store->getRecording($recordingId);
+        $stored    = $recording === null ? null : $this->storedPlaylist($recording);
+
+        if ($stored === null) {
+            return null;
+        }
+
+        $video = array_search($height, self::renditionsIn($stored), true);
+        $audio = self::defaultAudioIn($stored);
+
+        if ($video === false || $audio === null || !is_file("$stored/$video") || !is_file("$stored/$audio")) {
+            return null;
+        }
+
+        $name = preg_replace('/\.ts$/i', '', basename($recording['path'])) . " {$height}p.mp4";
+
+        return [
+            'command' => sprintf(
+                // Fragmented, because it is written to a pipe: a plain mp4 wants to seek
+                // back and write its index, and there is nowhere to seek back to.
+                // aac_adtstoasc is not optional -- the audio is ADTS inside the transport
+                // stream, and mp4 refuses it without the rewrite.
+                '%s -hide_banner -nostdin -loglevel error -i %s -i %s'
+                . ' -map 0:v:0 -map 1:a:0 -c copy -bsf:a aac_adtstoasc'
+                . ' -movflags frag_keyframe+empty_moov+default_base_moof -f mp4 pipe:1',
+                escapeshellarg($this->ffmpeg),
+                escapeshellarg("$stored/$video"),
+                escapeshellarg("$stored/$audio")
+            ),
+            'name' => $name,
+        ];
+    }
+
+    /**
+     * The audio rendition a player would pick, which is the one to send with a size.
+     *
+     * The broadcast's own choice where it made one, and the first otherwise.
+     */
+    private static function defaultAudioIn(string $directory): ?string
+    {
+        $master = @file_get_contents("$directory/index.m3u8");
+
+        if ($master === false) {
+            return null;
+        }
+
+        preg_match_all('/#EXT-X-MEDIA:TYPE=AUDIO[^\n]*URI="(v\d+)\.m3u8"/', $master, $found, PREG_SET_ORDER);
+
+        $first = null;
+
+        foreach ($found as $match) {
+            $first ??= "$match[1].ts";
+
+            if (str_contains($match[0], 'DEFAULT=YES')) {
+                return "$match[1].ts";
+            }
+        }
+
+        return $first;
     }
 
     /**
