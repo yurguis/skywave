@@ -2463,6 +2463,17 @@ function createRecordingsView(device, player) {
           + (rule.earliest !== null && rule.latest !== null ? ` · ${clockOf(rule.earliest)}–${clockOf(rule.latest)}` : '')),
       ),
       h('span', { class: 'actions' },
+        // Only showings not yet scheduled follow this. The ones already queued were handed
+        // a copy of the format when they were made, so the title says what it changes.
+        h('select', {
+          class: 'secondary',
+          title: `What to keep for showings of ${rule.title} that are not scheduled yet`,
+          'aria-label': `What to keep for ${rule.title}`,
+          onchange: (changeEvent) => changeSeriesFormat(rule, changeEvent.currentTarget),
+        }, ...Object.entries(FORMAT_LABELS).map(([value, label]) => h('option', {
+          value,
+          selected: value === rule.format,
+        }, label))),
         h('button', {
           type: 'button',
           class: 'secondary',
@@ -2806,6 +2817,32 @@ function createRecordingsView(device, player) {
     }
 
     act(`/api/recordings/${recording.id}`, { method: 'DELETE' }, button, 'Deleting…');
+  }
+
+  /**
+   * Change what a series keeps from here on.
+   *
+   * Puts the old choice back when the server refuses, so the menu never shows something
+   * that was not saved.
+   */
+  async function changeSeriesFormat(rule, select) {
+    const chosen = select.value;
+
+    if (chosen === rule.format) return;
+
+    select.disabled = true;
+
+    try {
+      await api(`/api/recordings/rules/${rule.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ format: chosen }),
+      });
+      await load();
+    } catch (error) {
+      showError(error);
+      select.value = rule.format;
+      select.disabled = false;
+    }
   }
 
   async function act(path, options, button, busyLabel) {
