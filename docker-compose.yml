@@ -77,6 +77,11 @@ services:
     environment:
       RECORDINGS_DIR: /recordings
       RECORDING_HEIGHT: ${RECORDING_HEIGHT:-720}
+      # This container makes the browser-ready copies, so it is the one that has to be told
+      # what to make them as, and at which sizes when that is a playlist.
+      RECORDING_CONVERT_TO: ${RECORDING_CONVERT_TO:-mp4}
+      RECORDING_PLAYBACK_RENDITIONS: ${RECORDING_PLAYBACK_RENDITIONS:-}
+      RECORDING_PLAYBACK_HEIGHT: ${RECORDING_PLAYBACK_HEIGHT:-}
     volumes:
       - guide-data:/data
       - "${RECORDINGS_DIR:-./data/recordings}:/recordings"

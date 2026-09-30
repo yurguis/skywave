@@ -1315,9 +1315,7 @@ class Api
         // Whatever was converted for watching it goes too.
         $this->playback?->forget($id);
 
-        foreach ($this->recorder === null ? [] : $this->recorder->filesFor($recording) as $file) {
-            @unlink($file);
-        }
+        $this->recorder?->discard($recording);
 
         $store->deleteRecording($id);
 
