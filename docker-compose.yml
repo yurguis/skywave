@@ -33,7 +33,10 @@ services:
       RECORDING_FORMAT: ${RECORDING_FORMAT:-ts}
       RECORDING_PAD_START: ${RECORDING_PAD_START:-60}
       RECORDING_PAD_END: ${RECORDING_PAD_END:-180}
-      RECORDING_PLAYBACK_HEIGHT: ${RECORDING_PLAYBACK_HEIGHT:-720}
+      # Neither is given a default here: the application's own is 720, and defaulting the
+      # newer one would override a RECORDING_PLAYBACK_HEIGHT somebody had already set.
+      RECORDING_PLAYBACK_RENDITIONS: ${RECORDING_PLAYBACK_RENDITIONS:-}
+      RECORDING_PLAYBACK_HEIGHT: ${RECORDING_PLAYBACK_HEIGHT:-}
       # HTTPS is served as well as HTTP when a certificate and key are mounted below.
       TLS_PORT: ${TLS_PORT:-8443}
       TLS_CERT: ${TLS_CERT:-/certs/fullchain.pem}
