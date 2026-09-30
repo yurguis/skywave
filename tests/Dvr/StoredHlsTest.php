@@ -122,10 +122,34 @@ class StoredHlsTest extends TestCase
         $this->assertSame(['As broadcast', '1080p', '720p'], array_column($offers, 'name'));
         $this->assertSame([
             "/recordings/$id/file?download=1",
-            "/recordings/$id/hls/v0.ts?download=1",
-            "/recordings/$id/hls/v1.ts?download=1",
+            "/recordings/$id/download/1080",
+            "/recordings/$id/download/720",
         ], array_column($offers, 'url'));
-        $this->assertSame([1, 20, 10], array_column($offers, 'bytes'));
+
+        // A size is picture only; what arrives is it and the sound together, so the size
+        // quoted counts both.
+        $this->assertSame([1, 25, 15], array_column($offers, 'bytes'));
+    }
+
+    public function testASizeIsSentWithItsSound(): void
+    {
+        // The whole point: a rendition on its own is silent, because HLS keeps the languages
+        // in renditions of their own. Both files have to go into what is handed over.
+        $id   = $this->addStored();
+        $plan = $this->playback->downloadPlan($id, 720);
+
+        $this->assertNotNull($plan);
+        $this->assertStringContainsString('A Show.hls/v1.ts', $plan['command'], 'the picture');
+        $this->assertStringContainsString('A Show.hls/v2.ts', $plan['command'], 'and the sound');
+        $this->assertStringContainsString('aac_adtstoasc', $plan['command'], 'which mp4 will not take raw');
+        $this->assertSame('A Show 720p.mp4', $plan['name']);
+    }
+
+    public function testASizeThatWasNeverMadeIsNotOffered(): void
+    {
+        $id = $this->addStored();
+
+        $this->assertNull($this->playback->downloadPlan($id, 2160));
     }
 
     public function testASizeIsSavedUnderTheRecordingsName(): void
