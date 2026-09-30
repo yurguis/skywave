@@ -226,6 +226,14 @@ decode 5.1, and it is a directory rather than a single file. `mp4` writes one fi
 close to the broadcast and with its surround sound intact. Either way the broadcast is
 untouched, and it is the one to open at home when you want exactly what was aired.
 
+If you ran an earlier version, `RECORDING_FORMAT` no longer does anything and can be
+deleted; one left in place is ignored. Two things change for you. Recordings kept as `ts`
+now also get a browser copy, which costs roughly a third of each program's duration in
+background CPU and rather more disk than an mp4 of the same program. And `mp4` no longer
+records by transcoding as it goes -- the broadcast is always written as sent, so nothing
+records without an original any more. Recordings already on disk are untouched and still
+play, whichever way they were made.
+
 **Download** saves a recording to whatever machine you are on, resuming rather than starting
 again if the connection drops. It gives you the mp4 copy when there is one, and the broadcast
 otherwise -- including when the copy is a playlist, which is a directory of segments rather
