@@ -915,6 +915,12 @@ class Api
             return $this->convertRecording((int) $match[1], self::jsonBody($request));
         }
 
+        if (preg_match('#^/api/recordings/(\d+)/downloads$#', $path, $match)) {
+            self::requireMethod($method, 'GET');
+
+            return ['downloads' => $this->recordingPlayback()->downloads((int) $match[1])];
+        }
+
         if (preg_match('#^/api/recordings/(\d+)/play$#', $path, $match)) {
             return $this->routePlayback($method, (int) $match[1], $request);
         }

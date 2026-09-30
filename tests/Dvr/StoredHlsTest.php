@@ -114,6 +114,46 @@ class StoredHlsTest extends TestCase
         $this->playback->play($id, 'viewer-1');
     }
 
+    public function testEverySizeIsOfferedToDownload(): void
+    {
+        $id     = $this->addStored();
+        $offers = $this->playback->downloads($id);
+
+        $this->assertSame(['As broadcast', '1080p', '720p'], array_column($offers, 'name'));
+        $this->assertSame([
+            "/recordings/$id/file?download=1",
+            "/recordings/$id/hls/v0.ts?download=1",
+            "/recordings/$id/hls/v1.ts?download=1",
+        ], array_column($offers, 'url'));
+        $this->assertSame([1, 20, 10], array_column($offers, 'bytes'));
+    }
+
+    public function testASizeIsSavedUnderTheRecordingsName(): void
+    {
+        // v0.ts says nothing once it is sitting in somebody's downloads folder.
+        $id = $this->addStored();
+
+        $this->assertSame('A Show 1080p.ts', $this->playback->downloadName($id, "$this->recordings/A Show.hls/v0.ts"));
+        $this->assertSame('A Show.ts', $this->playback->downloadName($id, "$this->recordings/A Show.ts"));
+    }
+
+    public function testAudioOnlyVariantsAreNotOfferedAsPictures(): void
+    {
+        // The languages sit in the master playlist too, as EXT-X-MEDIA with no RESOLUTION,
+        // and a language is not a size to download.
+        $id = $this->addStored();
+
+        $this->assertNotContains('v2.ts', array_column($this->playback->downloads($id), 'url'));
+    }
+
+    public function testARecordingWithNoCopyOffersTheBroadcastOnly(): void
+    {
+        $id = $this->addStored();
+        exec('rm -rf ' . escapeshellarg("$this->recordings/A Show.hls"));
+
+        $this->assertSame(['As broadcast'], array_column($this->playback->downloads($id), 'name'));
+    }
+
     private function addStored(): int
     {
         $id = $this->store->addRecording([
@@ -143,7 +183,15 @@ class StoredHlsTest extends TestCase
 
         file_put_contents("$this->recordings/A Show.ts", 'x');
         mkdir("$this->recordings/A Show.hls");
-        file_put_contents("$this->recordings/A Show.hls/index.m3u8", "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nv0.m3u8\n");
+        file_put_contents(
+            "$this->recordings/A Show.hls/index.m3u8",
+            "#EXTM3U\n"
+            . "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"group_aud\",NAME=\"audio_2\",LANGUAGE=\"eng\",URI=\"v2.m3u8\"\n"
+            . "#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1920x1080,AUDIO=\"group_aud\"\nv0.m3u8\n"
+            . "#EXT-X-STREAM-INF:BANDWIDTH=1,RESOLUTION=1280x720,AUDIO=\"group_aud\"\nv1.m3u8\n"
+        );
+        file_put_contents("$this->recordings/A Show.hls/v1.ts", str_repeat('x', 10));
+        file_put_contents("$this->recordings/A Show.hls/v2.ts", str_repeat('x', 5));
         file_put_contents(
             "$this->recordings/A Show.hls/v0.m3u8",
             "#EXTM3U\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXTINF:4.0,\n#EXT-X-BYTERANGE:10@0\nv0.ts\n"

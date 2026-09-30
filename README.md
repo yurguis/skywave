@@ -235,9 +235,12 @@ records without an original any more. Recordings already on disk are untouched a
 play, whichever way they were made.
 
 **Download** saves a recording to whatever machine you are on, resuming rather than starting
-again if the connection drops. It gives you the mp4 copy when there is one, and the broadcast
-otherwise -- including when the copy is a playlist, which is a directory of segments rather
-than something to hand over whole.
+again if the connection drops. When the copy is a playlist it offers the sizes in it as well
+as the broadcast, because each size is written as one file and is already playable on its
+own: a 720p rung of an hour of 1080i runs to about a third of what the broadcast does, and
+it is H.264 and AAC, which a phone will play where MPEG-2 and AC-3 will not. The broadcast
+is still there, and is the only copy with the surround sound and the picture exactly as
+aired. Nothing is transcoded to answer -- every size offered already exists on disk.
 
 **Convert** makes a browser-ready copy of a recording kept as broadcast, which is worth doing
 for the room it saves. Measured on a 1080i broadcast here: an hour takes about 2.8 GB as
