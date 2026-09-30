@@ -360,6 +360,8 @@ Settings (environment variables):
 | `HTTP_PORT` | `8090` in compose, `8080` in the image | Port nginx listens on |
 | `HDHOMERUN_DEVICES` | | Tuner IPs discovery cannot find, comma separated |
 | `MAX_STREAMS` | `2` | Programs that can play at once (one ffmpeg each) |
+| `FFMPEG` | `ffmpeg` | Path to ffmpeg, when it is not on `PATH`. Playback, recording and conversion all shell out to it |
+| `HLS_DIR` | `<temp>/hdhomerun-hls` | Where live playback writes its segments; a tmpfs in the image, since they are working files nobody keeps |
 | `HLS_RENDITIONS` | `720,480,360` | Picture heights offered to players, up to 4 (`1080,720,480,360` keeps full HD channels in full HD) |
 | `HLS_DVR_MINUTES` | `5` | How far back a live stream can be rewound (kept in memory in Docker, for every rendition) |
 | `HLS_VIEWER_TIMEOUT` | `30` | Seconds without a viewer before a stream stops |
@@ -402,8 +404,10 @@ docker compose up -d --build
 ```
 
 Only those stations use it. Every other channel and every recording keeps the ffmpeg in the
-image, which is several major versions newer: the patch exists only for 6.1, and nothing
-else should be dragged back that far to gain sound on a couple of stations.
+image, and nothing else is moved onto this build to gain sound on a couple of stations. It
+is [librempeg](https://github.com/librempeg/librempeg), a fork carrying the same decoder by
+the same author on a current base; this recipe used to patch ffmpeg 6.1 instead, because the
+2020 patch applied to nothing newer.
 
 The recipe is committed here; the result never is. It is patent-encumbered and cannot be
 redistributed, and the patch was declined by ffmpeg as unfinished, so treat what it produces
@@ -473,10 +477,13 @@ anyone on the path.
 - **The guide comes from the broadcast**, so it covers only what your antenna receives:
   about twelve hours on a typical channel, a little over a day at the furthest. Station
   logos and programme pictures are fetched from the internet once and then served locally.
-- **Windows support is untested.** Playback, recordings and background guide jobs each start
-  a process that has to outlive the request, and the Windows path for that -- PowerShell's
-  `Start-Process` rather than `setsid`, `tasklist` and `taskkill` rather than signals -- has
-  never been run on Windows by anyone. Docker Desktop, or WSL2, is the tested route there.
+- **Windows has been run, on one machine.** Playback, recordings and background guide jobs
+  each start a process that has to outlive the request, which on Windows means PowerShell
+  rather than `setsid`, and `tasklist` and `taskkill` rather than signals. That path works:
+  the command is handed over base64-encoded, because `Start-Process -ArgumentList` splits
+  arguments that contain spaces and a recording's name usually does. It has been exercised
+  on a single Windows machine rather than across versions, so Docker Desktop or WSL2 remains
+  the better-travelled route.
 
 ### Running without Docker
 
