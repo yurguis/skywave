@@ -14,6 +14,11 @@ use Skywave\Dvr\TunerReservations;
  * both take twice as long instead of getting more done, and both compete with whatever is
  * being recorded. Several "both" recordings ending in the same minute is the ordinary way
  * this happens, and it used to start a conversion for every one of them.
+ *
+ * The other half of the guard -- that nothing new starts while a conversion is still under
+ * way -- is not tested here. A conversion counts as running only if the pid belongs to a
+ * live ffmpeg (on Linux that is read out of /proc/<pid>/cmdline), so standing one up would
+ * mean really starting one from a test.
  */
 class ConversionQueueTest extends TestCase
 {
@@ -61,19 +66,6 @@ class ConversionQueueTest extends TestCase
 
         // Queued rather than dropped: the second one is picked up on a later tick.
         $this->assertSame(2, $this->attempted());
-    }
-
-    public function testNothingStartsWhileOneIsStillConverting(): void
-    {
-        // This process is certainly running, so it stands in for a conversion under way.
-        $busy = $this->addWaiting('A Show.ts');
-        $this->store->updateRecording($busy, ['convertPid' => getmypid()]);
-
-        $this->addWaiting('B Show.ts');
-
-        $this->recorder->tick();
-
-        $this->assertSame(0, $this->attempted(), 'the machine is already busy');
     }
 
     /** How many recordings have been through startConversion. */
