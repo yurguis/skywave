@@ -143,7 +143,19 @@ class SeriesRulesEvaluateTest extends TestCase
         $this->assertSame(0, $this->series->evaluate(self::DEVICE)['scheduled']);
     }
 
-    private function addRule(string $title): int
+    public function testAShowingKeepsRecordingAsLongAsItsRuleSays(): void
+    {
+        // The reason a rule carries this at all: every showing of a series that runs over
+        // needs the same margin, and saying so once is the only practical way.
+        $this->addEvent(29, 3, '2026 MLB Playoffs', time() + 3600);
+        $this->addRule('2026 MLB Playoffs', 30 * 60);
+
+        $this->series->evaluate(self::DEVICE);
+
+        $this->assertSame(30 * 60, $this->recordings->getSchedules()[0]['padEnd']);
+    }
+
+    private function addRule(string $title, int $padEnd = 180): int
     {
         return $this->recordings->addRule([
             'device'      => self::DEVICE,
@@ -153,9 +165,8 @@ class SeriesRulesEvaluateTest extends TestCase
             'channelName' => 'WTVJ',
             'title'       => $title,
             'timezone'    => 'UTC',
-            'format'      => 'ts',
             'padStart'    => 60,
-            'padEnd'      => 180,
+            'padEnd'      => $padEnd,
         ]);
     }
 
