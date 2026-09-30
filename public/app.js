@@ -2006,6 +2006,9 @@ function createGuideView(device, player) {
   }
 
   // Stop what is recording, cancel what is only scheduled, otherwise offer to record.
+  // What was last chosen for a programme, so a refresh mid-decision does not undo it.
+  let lateChoice = { key: null, value: '' };
+
   function recordButton(channel, event, onNow, scheduled, recording) {
     if (recording !== null) {
       return h('button', {
@@ -2039,13 +2042,23 @@ function createGuideView(device, player) {
     // Sport runs over and the broadcast guide never says so: the listing keeps its planned
     // length, and the programmes after it keep their planned times, however late it ends.
     // So how much longer to keep recording is a judgement only the person watching can make.
+    //
+    // The guide reloads every couple of seconds while anything is running, and this panel is
+    // rebuilt each time, so what was chosen has to be remembered or it is gone before the
+    // button beside it can be pressed. Remembered against this programme rather than kept as
+    // a setting: an hour of margin makes sense for a ball game and no sense at all for the
+    // sitcom recorded next week, and a sticky one would quietly follow it there.
+    const key = `${channel.virtual}|${event.start}|${event.title}`;
     const late = h('select', {
       class: 'record-format',
       'aria-label': 'Keep recording after it is due to end',
       title: 'Keep recording after it is due to end, for a programme that runs over',
+      onchange: () => { lateChoice = { key, value: late.value }; },
     },
       h('option', { value: '' }, 'Stop on time'),
       ...[15, 30, 60].map((minutes) => h('option', { value: String(minutes * 60) }, `+${minutes} min`)));
+
+    if (lateChoice.key === key) late.value = lateChoice.value;
 
     return h('span', { class: 'record-choice' },
       h('button', {
