@@ -218,9 +218,19 @@ program ends, so no tuner time is spent on conversion and the original is kept. 
 made in the background (about 20 times faster than playback) and used for playback when it
 is ready; until then the recording plays like any other `ts`.
 
+`RECORDING_CONVERT_TO` chooses what that copy is. `mp4` is one file, close to the broadcast
+and with its surround sound intact -- the one to keep if you mean to keep it. `hls` writes a
+finished playlist and the sizes in `RECORDING_PLAYBACK_RENDITIONS` instead, which is what
+watching a `ts` recording would have produced on the fly, except that it is already there:
+the full length and a working seek bar the moment it opens, nothing transcoding while you
+watch, and a smaller picture to fall back on from outside the house. It is stereo, because a
+browser will not reliably decode 5.1, and it is a directory rather than a single file. Either
+way the broadcast is untouched.
+
 **Download** saves a recording to whatever machine you are on, resuming rather than starting
-again if the connection drops. It gives you the browser-ready copy when there is one and the
-broadcast otherwise.
+again if the connection drops. It gives you the mp4 copy when there is one, and the broadcast
+otherwise -- including when the copy is a playlist, which is a directory of segments rather
+than something to hand over whole.
 
 **Convert** makes a browser-ready copy of a recording kept as broadcast, which is worth doing
 for the room it saves. Measured on a 1080i broadcast here: an hour takes about 2.8 GB as
@@ -353,6 +363,7 @@ Settings (environment variables):
 | `RECORDING_HEIGHT` | `720` | Picture height for `mp4` recordings |
 | `RECORDING_PLAYBACK_RENDITIONS` | `720` | Picture heights when converting a `ts` recording for watching, up to 4; several let a player drop to a smaller picture on a weak connection, and share one deinterlace |
 | `RECORDING_PLAYBACK_HEIGHT` | | The older name for a single height above; still read when the one above is unset |
+| `RECORDING_CONVERT_TO` | `mp4` | What a browser-ready copy is made as: `mp4` for one file that keeps the broadcast's surround sound, or `hls` for a finished playlist at the heights above, which opens with its full length and seek bar and needs no transcoding while you watch (stereo, and a directory rather than a file) |
 | `RECORDING_PAD_START` / `RECORDING_PAD_END` | `60` / `180` | Seconds recorded before and after a program |
 | `RECORDER_TICK` | `10` | Seconds between recorder checks for due recordings |
 | `TLS_DIR` | `./certs` | Folder holding the certificate and key, mounted read-only at `/certs` |

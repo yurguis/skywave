@@ -1594,6 +1594,10 @@ function createPlayer(panel) {
       return;
     }
 
+    // A copy converted ahead of time keeps nothing alive on the server and will never say
+    // anything different, so there is no reason to ask a second time.
+    if (state.stored) return;
+
     timer = setTimeout(pollRecording, hls || video.getAttribute('src') ? 10000 : 1000);
   }
 
@@ -2711,7 +2715,7 @@ function createRecordingsView(device, player) {
 
     if (recording.hd) badges.push(h('span', { class: 'badge hd tag-hd' }, 'HD'));
     if (recording.format !== 'mp4') badges.push(h('span', { class: 'badge hd tag-ts' }, 'TS'));
-    if (recording.format === 'mp4' || recording.convertedPath) badges.push(h('span', { class: 'badge hd tag-mp4' }, 'MP4'));
+    if (recording.format === 'mp4' || recording.convertedPath) badges.push(h('span', { class: 'badge hd tag-mp4' }, copyKind(recording)));
 
     return badges;
   }
@@ -2772,13 +2776,19 @@ function createRecordingsView(device, player) {
     }
   }
 
+  // Which shape the browser-ready copy took. The server decides it, and a copy still being
+  // made has not said yet, so only a finished one can be named.
+  function copyKind(recording) {
+    return recording.convertedPath?.endsWith('.hls') ? 'HLS' : 'MP4';
+  }
+
   // What exists besides the broadcast itself: a browser-ready copy, one being made, or
   // the reason there is none.
   function describeCopy(recording) {
     if (recording.format === 'mp4') return ' · MP4';
-    if (recording.convertedBytes) return ` · MP4 ${formatBytes(recording.convertedBytes)}`;
-    if (recording.convertPid) return ' · making an MP4 copy…';
-    if (recording.convertError) return ` · no MP4 copy: ${recording.convertError}`;
+    if (recording.convertedBytes) return ` · ${copyKind(recording)} ${formatBytes(recording.convertedBytes)}`;
+    if (recording.convertPid) return ' · making a copy for browsers…';
+    if (recording.convertError) return ` · no browser copy: ${recording.convertError}`;
 
     return '';
   }

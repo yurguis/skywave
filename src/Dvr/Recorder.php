@@ -8,11 +8,13 @@ declare(strict_types=1);
 namespace Skywave\Dvr;
 
 use RuntimeException;
+use Skywave\AudioTracks;
 use Skywave\Guide\GuideStore;
 use Skywave\Guide\ProgrammeArtwork;
 use Skywave\Hdhomerun\Device;
 use Skywave\Hdhomerun\Exception\HdhomerunException;
 use Skywave\Hdhomerun\Tuner;
+use Skywave\HlsLadder;
 use Throwable;
 
 /**
@@ -52,32 +54,52 @@ class Recorder
     /** Refuse to start when the drive has less room than this. */
     private const MINIMUM_FREE_BYTES = 2 * 1024 * 1024 * 1024;
 
+    /** More sizes than this is more encoding than one recording is worth. */
+    private const MAXIMUM_RENDITIONS = 4;
+
+    /** Segment length of an HLS copy, matching what the on-demand converter writes. */
+    private const SEGMENT_SECONDS = 4;
+
     private RecordingStore $store;
     private TunerReservations $reservations;
     private string $directory;
     private string $ffmpeg;
     private int $height;
+
+    /** 'mp4' or 'hls': what a browser-ready copy is made as. */
+    private string $convertTo;
+    /** @var int[] picture heights an HLS copy is written at, tallest first */
+    private array $renditions;
     /** @var callable(string): void */
     private $log;
 
     /**
      * @param string $directory where recordings are written
      * @param int $height tallest picture for recordings converted while recording
+     * @param string $convertTo 'mp4' for one file, 'hls' for a playlist and its sizes
+     * @param int[] $renditions picture heights an HLS copy offers, tallest first
      * @param callable(string): void|null $log progress lines
      */
-    public function __construct(RecordingStore $store, TunerReservations $reservations, string $directory, string $ffmpeg = 'ffmpeg', int $height = 720, ?callable $log = null)
+    public function __construct(RecordingStore $store, TunerReservations $reservations, string $directory, string $ffmpeg = 'ffmpeg', int $height = 720, string $convertTo = 'mp4', array $renditions = [], ?callable $log = null)
     {
         $this->store        = $store;
         $this->reservations = $reservations;
         $this->directory    = rtrim($directory, '/');
         $this->ffmpeg       = $ffmpeg;
         $this->height       = max(144, min(2160, $height));
+        $this->convertTo    = $convertTo === 'hls' ? 'hls' : 'mp4';
+        $this->renditions   = array_slice($renditions === [] ? [$this->height] : array_values($renditions), 0, self::MAXIMUM_RENDITIONS);
         $this->log          = $log ?? static function (string $line): void {
         };
     }
 
     /**
-     * Settings from RECORDINGS_DIR, FFMPEG and RECORDING_HEIGHT.
+     * Settings from RECORDINGS_DIR, FFMPEG, RECORDING_HEIGHT, RECORDING_CONVERT_TO and
+     * RECORDING_PLAYBACK_RENDITIONS.
+     *
+     * The sizes come from the same setting the on-demand converter uses: an HLS copy made
+     * ahead of time is exactly what that would have produced, so having a second list to
+     * keep in step would only be a way to get them wrong.
      *
      * @param callable(string): void|null $log
      */
@@ -95,8 +117,22 @@ class Recorder
             $env('RECORDINGS_DIR', dirname(__DIR__, 2) . '/data/recordings'),
             $env('FFMPEG', 'ffmpeg'),
             (int) $env('RECORDING_HEIGHT', '720'),
+            $env('RECORDING_CONVERT_TO', 'mp4'),
+            self::heights($env('RECORDING_PLAYBACK_RENDITIONS', $env('RECORDING_PLAYBACK_HEIGHT', ''))),
             $log
         );
+    }
+
+    /**
+     * A comma-separated list of picture heights, as the environment gives it.
+     *
+     * @return int[]
+     */
+    private static function heights(string $list): array
+    {
+        $heights = array_filter(array_map('trim', explode(',', $list)), 'ctype_digit');
+
+        return array_map('intval', array_values($heights));
     }
 
     public function getDirectory(): string
@@ -118,7 +154,8 @@ class Recorder
 
     /**
      * Every file a recording owns: the broadcast, any browser-ready copy, and the logs and
-     * half-finished copies left beside them.
+     * half-finished copies left beside them. A copy made as HLS is a directory, and the
+     * files inside it are listed rather than the directory.
      *
      * @param array<string, mixed> $recording
      * @return string[]
@@ -135,15 +172,32 @@ class Recorder
             }
 
             foreach (['', '.log', '.part', '.part.log'] as $suffix) {
-                $file = "$this->directory/$path$suffix";
-
-                if (is_file($file)) {
-                    $files[] = $file;
-                }
+                // An HLS copy is a directory, and everything inside it belongs to the
+                // recording just as much as a single mp4 would.
+                $files = array_merge($files, self::filesIn("$this->directory/$path$suffix"));
             }
         }
 
         return $files;
+    }
+
+    /**
+     * Throw away everything a recording owns.
+     *
+     * @param array<string, mixed> $recording
+     */
+    public function discard(array $recording): void
+    {
+        foreach ($this->filesFor($recording) as $file) {
+            @unlink($file);
+        }
+
+        // Emptied above; an HLS copy leaves the directory itself behind.
+        foreach (array_filter([$recording['path'] ?? null, $recording['convertedPath'] ?? null]) as $path) {
+            foreach (['', '.part'] as $suffix) {
+                @rmdir("$this->directory/$path$suffix");
+            }
+        }
     }
 
     /**
@@ -530,14 +584,19 @@ class Recorder
 
         try {
             $this->guardDirectory();
-            $partial = "$this->directory/" . self::convertedPath($recording) . '.part';
-            // Asked for by hand, the page says what to do with the picture: null keeps
-            // whatever was broadcast. "both" still follows RECORDING_HEIGHT, which is a
-            // choice made once for every recording rather than one at a time.
-            $height = ($recording['convertRequested'] ?? false)
-                ? ($recording['convertHeight'] ?? null)
-                : $this->height;
-            $pid = DetachedProcess::start($this->conversionArguments($source, $partial, $height), "$partial.log");
+            $partial = "$this->directory/" . $this->convertedPath($recording) . '.part';
+            $byHand  = (bool) ($recording['convertRequested'] ?? false);
+            // Asked for by hand, the page says how big the picture should be; null means it
+            // did not say. A "both" recording was never asked, and follows the settings
+            // instead: RECORDING_HEIGHT for an mp4, the ladder for a playlist.
+            $chosen = $byHand ? ($recording['convertHeight'] ?? null) : null;
+
+            $pid = DetachedProcess::start(
+                $this->convertTo === 'hls'
+                    ? $this->hlsConversionArguments($source, $this->emptyDirectory($partial), $chosen)
+                    : $this->conversionArguments($source, $partial, $byHand ? $chosen : $this->height),
+                "$partial.log"
+            );
         } catch (RuntimeException $e) {
             $this->store->updateRecording($recording['id'], ['convertError' => $e->getMessage()]);
             ($this->log)("Cannot convert {$recording['title']}: {$e->getMessage()}");
@@ -558,13 +617,12 @@ class Recorder
             return;
         }
 
-        $path    = self::convertedPath($recording);
-        $partial = "$this->directory/$path.part";
-        $bytes   = is_file($partial) ? (int) filesize($partial) : 0;
+        $partial = $this->partialPath($recording);
+        $path    = substr($partial, strlen("$this->directory/"), -strlen('.part'));
+        $bytes   = self::sizeOf($partial);
 
-        // ffmpeg writes the index last, so a file it never finished cannot be read back.
         if ($bytes < 1 || !$this->isPlayable($partial)) {
-            @unlink($partial);
+            self::remove($partial);
             $this->store->updateRecording($recording['id'], [
                 'convertPid'   => null,
                 'convertError' => DetachedProcess::lastLogLine("$partial.log") ?? 'The conversion did not finish',
@@ -577,7 +635,9 @@ class Recorder
         rename($partial, "$this->directory/$path");
         @unlink("$partial.log");
 
-        // The captions were written next to the half-finished file; move them with it.
+        // The captions were written next to the half-finished file; move them with it. An
+        // HLS copy has none to move: the captions travel inside its video, where a player
+        // reading a playlist finds them by itself.
         $captions = self::captionsPath($partial);
 
         if (is_file($captions) && filesize($captions) > 0) {
@@ -595,10 +655,10 @@ class Recorder
     }
 
     /**
-     * @return string[]
-     */
-    /**
+     * One mp4 file, kept as close to the broadcast as a browser can play.
+     *
      * @param int|null $height picture height to convert to, or null to keep the source's
+     * @return string[]
      */
     private function conversionArguments(string $source, string $file, ?int $height = null): array
     {
@@ -644,6 +704,167 @@ class Recorder
     }
 
     /**
+     * A playlist and one file per size, finished and ready to open.
+     *
+     * The on-demand converter makes the same thing while somebody watches; making it ahead
+     * of time means the player is handed a VOD playlist that already knows how long the
+     * programme is, so the duration and the seek bar are there from the first frame instead
+     * of growing as the conversion catches up.
+     *
+     * @param int|null $height tallest size to make, or null for the whole configured ladder
+     * @return string[]
+     */
+    private function hlsConversionArguments(string $source, string $directory, ?int $height = null): array
+    {
+        $tracks     = AudioTracks::of($this->ffmpeg, $source);
+        $renditions = self::ladderUpTo($this->renditions, $height);
+
+        [$graph, $outputs, $streams] = HlsLadder::plan($renditions, $tracks, AudioTracks::preferred($tracks));
+
+        return array_merge([
+            $this->ffmpeg, '-hide_banner', '-nostdin', '-loglevel', 'error',
+            '-fflags', '+genpts+discardcorrupt',
+            '-i', $source,
+            '-filter_complex', implode(';', $graph),
+        ], $outputs, [
+            '-fps_mode', 'passthrough',
+            '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-crf', '21',
+        ], count($renditions) > 1 ? [
+            // Key frames where the segments are cut, so a player can change size at any of
+            // them; sizes whose keyframes land elsewhere cannot line up.
+            '-force_key_frames', sprintf('expr:gte(t,n_forced*%d)', self::SEGMENT_SECONDS),
+            '-sc_threshold', '0',
+        ] : [], [
+            // Downmixed to stereo, unlike the mp4 beside it. This copy exists to be played
+            // in a browser, and a browser's media source does not reliably decode 5.1 AAC:
+            // passing surround through leaves the picture stuck at buffering with segments
+            // written and no error to show for it. The broadcast still has the surround.
+            '-c:a', 'aac', '-ac', '2',
+            '-f', 'hls',
+            '-hls_time', (string) self::SEGMENT_SECONDS,
+            // Finished, not growing: the playlist carries every segment and an ENDLIST, so
+            // a player knows the length before it plays anything.
+            '-hls_playlist_type', 'vod',
+            // One file per size with the playlist pointing at byte ranges inside it, rather
+            // than 2,700 files for a three-hour programme at every size it is offered at.
+            '-hls_flags', 'independent_segments+single_file',
+            '-var_stream_map', implode(' ', $streams),
+            '-master_pl_name', 'index.m3u8',
+            '-hls_segment_filename', "$directory/v%v.ts",
+            "$directory/v%v.m3u8",
+        ]);
+    }
+
+    /**
+     * The ladder, with nothing in it taller than the size that was asked for.
+     *
+     * A height chosen by hand says how big the picture should be, not that the smaller sizes
+     * below it are unwanted: they are what a player drops to on a weak connection, which is
+     * the reason for making a playlist at all. Asking for one smaller than anything
+     * configured leaves just that one.
+     *
+     * Public so the choice can be read back in a test, as HlsLadder's is.
+     *
+     * @param int[] $renditions
+     * @return int[]
+     */
+    public static function ladderUpTo(array $renditions, ?int $height): array
+    {
+        if ($height === null) {
+            return $renditions;
+        }
+
+        $height = max(144, min(2160, $height));
+        $kept   = array_values(array_filter($renditions, static fn (int $size): bool => $size <= $height));
+
+        return $kept === [] ? [$height] : $kept;
+    }
+
+    /**
+     * A directory with nothing in it, whatever was there before.
+     *
+     * A conversion that died leaves its segments behind, and ffmpeg would write the new
+     * playlist alongside them: the sizes a previous run got to would still be listed.
+     */
+    private function emptyDirectory(string $directory): string
+    {
+        self::remove($directory);
+
+        if (!@mkdir($directory, 0775, true) && !is_dir($directory)) {
+            throw new RuntimeException("Unable to create $directory");
+        }
+
+        return $directory;
+    }
+
+    /**
+     * The half-finished copy on disk, whichever shape it was started as.
+     *
+     * Read from the disk rather than from the setting, because the setting can be changed
+     * while a conversion is running and the copy being written does not change with it.
+     *
+     * @param array<string, mixed> $recording
+     */
+    private function partialPath(array $recording): string
+    {
+        $name = "$this->directory/" . preg_replace('/\.ts$/i', '', (string) $recording['path']);
+
+        foreach (['.mp4', '.hls'] as $extension) {
+            if (file_exists("$name$extension.part")) {
+                return "$name$extension.part";
+            }
+        }
+
+        return "$this->directory/" . $this->convertedPath($recording) . '.part';
+    }
+
+    /**
+     * Every file a path holds: itself, or everything one level inside it. HLS writes a flat
+     * directory, so there is no deeper level to walk.
+     *
+     * @return string[]
+     */
+    private static function filesIn(string $path): array
+    {
+        if (is_file($path)) {
+            return [$path];
+        }
+
+        if (!is_dir($path)) {
+            return [];
+        }
+
+        $files = [];
+
+        foreach (scandir($path) ?: [] as $entry) {
+            if (is_file("$path/$entry")) {
+                $files[] = "$path/$entry";
+            }
+        }
+
+        return $files;
+    }
+
+    /**
+     * What a copy came to: a file's size, or everything inside a directory added up.
+     */
+    private static function sizeOf(string $path): int
+    {
+        return array_sum(array_map(static fn (string $file): int => (int) filesize($file), self::filesIn($path)));
+    }
+
+    private static function remove(string $path): void
+    {
+        foreach (self::filesIn($path) as $file) {
+            @unlink($file);
+        }
+
+        if (is_dir($path)) {
+            @rmdir($path);
+        }
+    }
+
+    /**
      * Where a converted recording's captions live: beside it, same name, .vtt.
      */
     public static function captionsPath(string $file): string
@@ -651,8 +872,27 @@ class Recorder
         return preg_replace('/\.mp4(\.part)?$/', '', $file) . '.vtt';
     }
 
+    /**
+     * True when the conversion ran to the end.
+     *
+     * ffmpeg writes an mp4's index last, so one it never finished cannot be read back at
+     * all. An HLS copy is readable the whole way through and says so in the playlist
+     * instead: #EXT-X-ENDLIST is written when the input runs out, so a conversion that was
+     * killed leaves a playlist without one.
+     */
     private function isPlayable(string $file): bool
     {
+        if (is_dir($file)) {
+            // With several sizes index.m3u8 only names the others; the segments are listed
+            // in the first size's playlist.
+            $playlist = @file_get_contents("$file/v0.m3u8");
+            $playlist = $playlist === false ? @file_get_contents("$file/index.m3u8") : $playlist;
+
+            return is_string($playlist)
+                && str_contains($playlist, '#EXTINF')
+                && str_contains($playlist, '#EXT-X-ENDLIST');
+        }
+
         $probe = str_replace('ffmpeg', 'ffprobe', $this->ffmpeg);
         $shown = (string) shell_exec(sprintf(
             '%s -v error -show_entries format=duration -of csv=p=0 %s 2>/dev/null',
@@ -664,11 +904,16 @@ class Recorder
     }
 
     /**
+     * Where a recording's browser-ready copy goes: beside the broadcast, same name. An mp4
+     * is a file; HLS is a directory holding the playlists and one file per size.
+     *
      * @param array<string, mixed> $recording
      */
-    private static function convertedPath(array $recording): string
+    private function convertedPath(array $recording): string
     {
-        return preg_replace('/\.ts$/i', '', (string) $recording['path']) . '.mp4';
+        $name = preg_replace('/\.ts$/i', '', (string) $recording['path']);
+
+        return $name . ($this->convertTo === 'hls' ? '.hls' : '.mp4');
     }
 
     /**

@@ -8,6 +8,7 @@ declare(strict_types=1);
 namespace Skywave\Dvr;
 
 use RuntimeException;
+use Skywave\AudioTracks;
 use Skywave\HlsLadder;
 
 /**
@@ -33,9 +34,6 @@ use Skywave\HlsLadder;
 class RecordingPlayback
 {
     private const SEGMENT_SECONDS = 4;
-
-    /** More languages than this on one programme is not something to plan for. */
-    private const MAXIMUM_AUDIO_TRACKS = 4;
 
     /** More sizes than this is more encoding than watching one recording is worth. */
     private const MAXIMUM_RENDITIONS = 4;
@@ -98,6 +96,11 @@ class RecordingPlayback
     {
         $recording = $this->recording($recordingId);
 
+        $stored = $this->storedPlaylist($recording);
+        if ($stored !== null) {
+            return $this->describeStored($recording, $stored);
+        }
+
         if ($this->playsAsIs($recording)) {
             return $this->describeFile($recording);
         }
@@ -131,6 +134,11 @@ class RecordingPlayback
     public function status(int $recordingId, ?string $viewer): array
     {
         $recording = $this->recording($recordingId);
+
+        $stored = $this->storedPlaylist($recording);
+        if ($stored !== null) {
+            return $this->describeStored($recording, $stored);
+        }
 
         if ($this->playsAsIs($recording)) {
             return $this->describeFile($recording);
@@ -198,7 +206,39 @@ class RecordingPlayback
 
         $path = "$this->directory/$recordingId/$file";
 
-        return is_file($path) ? $path : null;
+        if (is_file($path)) {
+            return $path;
+        }
+
+        // A copy converted ahead of time holds the same names, in its own directory beside
+        // the recording. Once one exists no session is ever started, so the two never both
+        // answer; this is second because it costs a database read and a segment is asked for
+        // over and over, where the line above is a file test.
+        $stored = $this->storedPlaylist($this->store->getRecording($recordingId) ?? []);
+
+        return $stored !== null && is_file("$stored/$file") ? "$stored/$file" : null;
+    }
+
+    /**
+     * The directory of a copy converted ahead of time, or null when there is not one.
+     *
+     * RECORDING_CONVERT_TO=hls makes this instead of an mp4: a finished playlist the player
+     * opens directly, so the length and the seek bar are there from the first frame and
+     * nothing has to be transcoded while somebody watches.
+     *
+     * @param array<string, mixed> $recording
+     */
+    private function storedPlaylist(array $recording): ?string
+    {
+        $path = $recording['convertedPath'] ?? null;
+
+        if ($path === null || !str_ends_with($path, '.hls')) {
+            return null;
+        }
+
+        $directory = rtrim(dirname($this->directory), '/') . '/' . $path;
+
+        return is_file("$directory/index.m3u8") ? $directory : null;
     }
 
     /**
@@ -233,7 +273,13 @@ class RecordingPlayback
         }
 
         // A "both" recording keeps the broadcast and a browser-ready copy; serve the copy.
-        $path = rtrim(dirname($this->directory), '/') . '/' . ($recording['convertedPath'] ?? $recording['path']);
+        // An HLS copy is a directory and is served through its playlist instead, so what is
+        // left to hand over whole is the broadcast -- which is what a download wants.
+        $directory = rtrim(dirname($this->directory), '/');
+        $converted = $recording['convertedPath'] ?? null;
+        $path      = "$directory/" . ($converted === null || str_ends_with($converted, '.hls')
+            ? $recording['path']
+            : $converted);
 
         return is_file($path) ? $path : null;
     }
@@ -245,7 +291,12 @@ class RecordingPlayback
      */
     private function playsAsIs(array $recording): bool
     {
-        if ($recording['format'] !== 'mp4' && ($recording['convertedPath'] ?? null) === null) {
+        $converted = (string) ($recording['convertedPath'] ?? '');
+
+        // An HLS copy is a playlist and a directory of segments, not a file a <video> can be
+        // pointed at. One that is there is used before this is asked; one that is damaged or
+        // half-deleted leaves the broadcast, which is converted on demand as it always was.
+        if ($recording['format'] !== 'mp4' && ($converted === '' || str_ends_with($converted, '.hls'))) {
             return false;
         }
 
@@ -320,29 +371,7 @@ class RecordingPlayback
      */
     private function audioTracks(string $file): array
     {
-        $probe = str_replace('ffmpeg', 'ffprobe', $this->ffmpeg);
-        $shown = (string) shell_exec(sprintf(
-            '%s -v error -select_streams a -show_entries stream=channels:stream_disposition=visual_impaired:stream_tags=language -of json %s 2>/dev/null',
-            escapeshellarg($probe),
-            escapeshellarg($file)
-        ));
-        $probed = json_decode($shown, true);
-        $tracks = [];
-
-        foreach (array_slice($probed['streams'] ?? [], 0, self::MAXIMUM_AUDIO_TRACKS) as $stream) {
-            $count = isset($stream['channels']) ? (int) $stream['channels'] : null;
-
-            $tracks[] = [
-                'language' => $stream['tags']['language'] ?? null,
-                'channels' => $count === null ? null : self::channelLabel($count),
-                // An audio description is a second track in the same language, and the
-                // broadcast marks it rather than naming it. Without reading the mark both
-                // read as plain English and whichever came first won for good.
-                'described' => (bool) ($stream['disposition']['visual_impaired'] ?? false),
-            ];
-        }
-
-        return $tracks;
+        return AudioTracks::of($this->ffmpeg, $file);
     }
 
     /**
@@ -365,21 +394,7 @@ class RecordingPlayback
      */
     private static function defaultTrack(array $tracks): int
     {
-        foreach ($tracks as $index => $track) {
-            if (empty($track['described'])) {
-                return $index;
-            }
-        }
-
-        return 0;
-    }
-
-    /**
-     * A count of channels as people write it: 6 is 5.1, 2 is 2.0.
-     */
-    private static function channelLabel(int $channels): string
-    {
-        return $channels > 2 ? sprintf('%d.1', $channels - 1) : sprintf('%d.0', $channels);
+        return AudioTracks::preferred($tracks);
     }
 
     /**
@@ -531,6 +546,38 @@ class RecordingPlayback
             'segments'   => 0,
             'viewers'    => 1,
             'error'      => null,
+        ];
+    }
+
+    /**
+     * A copy converted ahead of time: nothing to start, nothing to wait for.
+     *
+     * @param array<string, mixed> $recording
+     * @return array<string, mixed>
+     */
+    private function describeStored(array $recording, string $directory): array
+    {
+        // With several sizes index.m3u8 only names the others; the segments are counted in
+        // the first size's playlist, as they are for a session.
+        $playlist = @file_get_contents("$directory/v0.m3u8");
+        $playlist = $playlist === false ? (string) @file_get_contents("$directory/index.m3u8") : $playlist;
+
+        return [
+            'kind'        => 'hls',
+            'recordingId' => $recording['id'],
+            'title'       => $recording['title'],
+            'virtual'     => $recording['virtual'],
+            'subtitle'    => trim("{$recording['virtual']} {$recording['channelName']}"),
+            'playlist'    => "/recordings/{$recording['id']}/hls/index.m3u8",
+            'converting'  => false,
+            'ready'       => true,
+            // Nothing to keep alive and nothing left to report, so the page can stop asking.
+            'stored'   => true,
+            'segments' => substr_count($playlist, '#EXTINF'),
+            'viewers'  => 1,
+            // What each track was in the broadcast, so the player can name them.
+            'audio' => $this->audioTracks($this->originalPath($recording)),
+            'error' => null,
         ];
     }
 
