@@ -894,6 +894,10 @@ class Api
         }
 
         if (preg_match('#^/api/recordings/rules/(\d+)$#', $path, $match)) {
+            if ($method === 'PATCH') {
+                return $this->changeSeriesRule((int) $match[1], self::jsonBody($request));
+            }
+
             self::requireMethod($method, 'DELETE');
 
             return ['cancelled' => $store->deleteRule((int) $match[1])];
@@ -1130,6 +1134,33 @@ class Api
             'id'        => $id,
             'scheduled' => $scheduled,
         ];
+    }
+
+    /**
+     * Change what a series keeps, from here on.
+     *
+     * Showings already scheduled keep the format they were given: each one was handed a
+     * copy when it was made, and nothing ties a schedule back to the rule that made it.
+     * Changing those as well would mean finding them by what the rule looks for, which
+     * would also catch a showing somebody had scheduled by hand. Cancel and schedule those
+     * again to move them.
+     *
+     * @param array<string, mixed> $body
+     * @return array<string, mixed>
+     */
+    private function changeSeriesRule(int $id, array $body): array
+    {
+        $format = is_string($body['format'] ?? null) ? $body['format'] : '';
+
+        if (!in_array($format, RecordingStore::FORMATS, true)) {
+            throw new ApiException('Expected "format" to be one of: ' . implode(', ', RecordingStore::FORMATS), 400);
+        }
+
+        if (!$this->recordingStore()->updateRule($id, ['format' => $format])) {
+            throw new ApiException("No series rule with id $id", 404);
+        }
+
+        return ['changed' => true, 'format' => $format];
     }
 
     /**

@@ -505,6 +505,42 @@ class RecordingStore
     }
 
     /**
+     * Change a rule that is already scheduling showings.
+     *
+     * Only what is named here can be changed. Anything else in the array is ignored rather
+     * than written, so a stray key cannot reach a column it was never meant to.
+     *
+     * @param array<string, mixed> $fields
+     * @return bool false when the rule does not exist, or nothing given could be changed
+     */
+    public function updateRule(int $id, array $fields): bool
+    {
+        $columns     = ['format' => 'format'];
+        $assignments = [];
+        $parameters  = [];
+
+        foreach ($fields as $name => $value) {
+            if (isset($columns[$name])) {
+                $assignments[] = $columns[$name] . ' = ?';
+                $parameters[]  = $value;
+            }
+        }
+
+        if ($assignments === []) {
+            return false;
+        }
+
+        $assignments[] = 'updated_at = ?';
+        $parameters[]  = time();
+        $parameters[]  = $id;
+
+        $statement = $this->db->prepare('UPDATE rules SET ' . implode(', ', $assignments) . ' WHERE id = ?');
+        $statement->execute($parameters);
+
+        return $statement->rowCount() > 0;
+    }
+
+    /**
      * @param array<string, mixed> $row
      * @return array<string, mixed>
      */
