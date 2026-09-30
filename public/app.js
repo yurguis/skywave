@@ -1114,11 +1114,16 @@ function createPlayer(panel) {
   /**
    * What the track was before the server converted it, which the playlist cannot say:
    * everything is sent as stereo, so its own channel count is the same for all of them.
+   *
+   * Said as "from 5.1" rather than "5.1", because what is playing is stereo either way and
+   * the bare number reads as a claim about what you are hearing. The broadcast's layout is
+   * still worth showing: it is often the only thing telling two tracks in the same language
+   * apart.
    */
   function audioDetail(track, index) {
     const described = (audioSources[index] ?? {}).channels ?? null;
 
-    if (described !== null) return described === '2.0' ? 'Stereo' : described;
+    if (described !== null) return described === '2.0' ? 'from stereo' : `from ${described}`;
 
     // Nothing known about it: better to say nothing than to show a track number.
     return track.lang ? '' : (track.name ?? '');
