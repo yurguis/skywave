@@ -30,7 +30,6 @@ services:
       HLS_RENDITIONS: ${HLS_RENDITIONS:-720,480,360}
       HLS_DVR_MINUTES: ${HLS_DVR_MINUTES:-5}
       RECORDINGS_DIR: /recordings
-      RECORDING_FORMAT: ${RECORDING_FORMAT:-ts}
       RECORDING_PAD_START: ${RECORDING_PAD_START:-60}
       RECORDING_PAD_END: ${RECORDING_PAD_END:-180}
       # Neither is given a default here: the application's own is 720, and defaulting the
@@ -79,7 +78,7 @@ services:
       RECORDING_HEIGHT: ${RECORDING_HEIGHT:-720}
       # This container makes the browser-ready copies, so it is the one that has to be told
       # what to make them as, and at which sizes when that is a playlist.
-      RECORDING_CONVERT_TO: ${RECORDING_CONVERT_TO:-mp4}
+      RECORDING_CONVERT_TO: ${RECORDING_CONVERT_TO:-hls}
       RECORDING_PLAYBACK_RENDITIONS: ${RECORDING_PLAYBACK_RENDITIONS:-}
       RECORDING_PLAYBACK_HEIGHT: ${RECORDING_PLAYBACK_HEIGHT:-}
     volumes:

@@ -75,12 +75,12 @@ class Recorder
 
     /**
      * @param string $directory where recordings are written
-     * @param int $height tallest picture for recordings converted while recording
+     * @param int $height tallest picture an mp4 copy is converted to
      * @param string $convertTo 'mp4' for one file, 'hls' for a playlist and its sizes
      * @param int[] $renditions picture heights an HLS copy offers, tallest first
      * @param callable(string): void|null $log progress lines
      */
-    public function __construct(RecordingStore $store, TunerReservations $reservations, string $directory, string $ffmpeg = 'ffmpeg', int $height = 720, string $convertTo = 'mp4', array $renditions = [], ?callable $log = null)
+    public function __construct(RecordingStore $store, TunerReservations $reservations, string $directory, string $ffmpeg = 'ffmpeg', int $height = 720, string $convertTo = 'hls', array $renditions = [], ?callable $log = null)
     {
         $this->store        = $store;
         $this->reservations = $reservations;
@@ -117,7 +117,7 @@ class Recorder
             $env('RECORDINGS_DIR', dirname(__DIR__, 2) . '/data/recordings'),
             $env('FFMPEG', 'ffmpeg'),
             (int) $env('RECORDING_HEIGHT', '720'),
-            $env('RECORDING_CONVERT_TO', 'mp4'),
+            $env('RECORDING_CONVERT_TO', 'hls'),
             self::heights($env('RECORDING_PLAYBACK_RENDITIONS', $env('RECORDING_PLAYBACK_HEIGHT', ''))),
             $log
         );
@@ -447,7 +447,7 @@ class Recorder
         );
 
         $pid = DetachedProcess::start(
-            $this->ffmpegArguments($source, (int) $schedule['program'], $seconds, $schedule['format'], $file),
+            $this->ffmpegArguments($source, (int) $schedule['program'], $seconds, $file),
             "$file.log"
         );
 
@@ -461,7 +461,7 @@ class Recorder
             'title'       => $schedule['title'],
             'description' => $this->currentDescription($schedule) ?? $schedule['description'],
             'path'        => $path,
-            'format'      => $schedule['format'],
+            'format'      => RecordingStore::KEPT,
             'tuner'       => $tuner->getIndex(),
             'pid'         => $pid,
             'startedAt'   => $now,
@@ -1012,7 +1012,7 @@ class Recorder
     /**
      * @return string[]
      */
-    private function ffmpegArguments(string $source, int $program, int $seconds, string $format, string $file): array
+    private function ffmpegArguments(string $source, int $program, int $seconds, string $file): array
     {
         $arguments = [
             $this->ffmpeg, '-hide_banner', '-nostdin', '-loglevel', 'error',
@@ -1022,23 +1022,6 @@ class Recorder
             '-rw_timeout', (string) (self::SOURCE_TIMEOUT_SECONDS * 1000000),
             '-i', $source,
         ];
-
-        if ($format === 'mp4') {
-            // One picture size, deinterlaced a frame at a time so the closed captions that
-            // travel with each frame survive, as in live playback.
-            return array_merge($arguments, [
-                '-map', "0:p:$program:v:0", '-map', "0:p:$program:a:0",
-                '-vf', sprintf('estdif=mode=frame:deint=interlaced,scale=w=-2:h=trunc(min(%d\,ih)/2)*2', $this->height),
-                '-fps_mode', 'passthrough',
-                '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-crf', '21',
-                // Whatever layout each track was broadcast with, in any language: a
-                // recording kept on disk should not lose surround the air carried.
-                '-c:a', 'aac',
-                '-movflags', '+faststart',
-                '-t', (string) $seconds,
-                '-y', $file,
-            ]);
-        }
 
         // The broadcast as it was sent: no transcoding, so no CPU cost and nothing lost.
         return array_merge($arguments, [
@@ -1058,12 +1041,11 @@ class Recorder
      */
     private function freeFileName(array $schedule): string
     {
-        $name      = $this->fileName($schedule);
-        $extension = $schedule['format'] === 'mp4' ? '.mp4' : '.ts';
-        $base      = substr($name, 0, -strlen($extension));
+        $name = $this->fileName($schedule);
+        $base = substr($name, 0, -strlen('.ts'));
 
         for ($attempt = 2; is_file("$this->directory/$name"); $attempt++) {
-            $name = "$base ($attempt)$extension";
+            $name = "$base ($attempt).ts";
         }
 
         return $name;
@@ -1081,7 +1063,7 @@ class Recorder
             $schedule['title']
         );
 
-        return self::sanitize($name) . ($schedule['format'] === 'mp4' ? '.mp4' : '.ts');
+        return self::sanitize($name) . '.ts';
     }
 
     /**
