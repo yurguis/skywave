@@ -345,6 +345,25 @@ button:disabled { opacity: .55; cursor: progress; }
 .video-wrap button.overlay-icon[aria-pressed="true"] { border-radius: 6px; box-shadow: inset 0 -3px 0 #fff; }
 .video-wrap button.overlay-record { color: #ff4d4d; }
 
+/* The jump buttons carry their number: two arrows alone read as variable-speed rewind, and
+   a touch screen has no hovering to find out otherwise. */
+.video-wrap button.overlay-skip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: auto;
+  padding: 0 9px;
+  border-radius: 20px;
+}
+
+.video-wrap button.overlay-skip svg { flex: none; width: 20px; height: 20px; }
+
+.video-wrap button.overlay-skip span {
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Drawn rather than left to the browser, so the bar agrees with the handle at both ends.
    A range thumb's centre only travels from half a thumb in to half a thumb short of the
    end, so the fill stops at the thumb's centre: at 0 that 6.5px hides under the left half
@@ -509,6 +528,11 @@ button:disabled { opacity: .55; cursor: progress; }
 @media (max-width: 520px) {
   .overlay-volume, .overlay-next, .overlay-time { display: none; }
   .video-wrap button.overlay-icon { width: 34px; height: 34px; }
+  /* Two rows rather than one that does not fit: squeezing it put the jump arrows at zero
+     width and pushed full screen past the edge. */
+  .overlay-controls { flex-wrap: wrap; justify-content: center; row-gap: 2px; }
+  .overlay-spacer { display: none; }
+  .video-wrap button.overlay-skip { padding: 0 7px; }
   .overlay-top { padding: 8px 10px 20px; }
   .video-wrap:not(.controls-hidden) .overlay-captions { bottom: 64px; }
   .overlay-menu { min-width: 180px; padding: 3px 0; }
