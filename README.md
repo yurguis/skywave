@@ -265,10 +265,15 @@ does it in the background, about four times faster than watching it, and checks 
 plays before keeping it. Nothing is deleted either way: the broadcast stays until you remove
 it yourself.
 
-The player has **jump buttons** either side of play -- ten seconds back, thirty forward.
-Thirty is the commercial-break length people actually tap through, and the arrow keys still
-nudge ten either way for finding an exact moment. They are the only way to skip on a phone,
-which has no arrow keys.
+The player puts **play and two jumps** in the middle of the picture -- ten seconds back,
+thirty forward -- where a thumb lands. Thirty is the commercial-break length people actually
+tap through, and the arrow keys still nudge ten either way for finding an exact moment. The
+buttons are the only way to skip on a phone, which has no arrow keys. The bar underneath
+keeps stop, the volume and the rest.
+
+Tapping the picture puts the controls away and brings them back. A tap that brings them back
+never also presses what it landed on: a phone makes up mouse events for a tap, which used to
+reveal the controls mid-press and hand the tap to whatever button was underneath.
 
 On a narrow screen the picture size, audio track and captions move behind a cog at the right
 of the controls: three named controls and the buttons do not fit on one line on a phone, and
