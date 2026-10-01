@@ -265,6 +265,11 @@ does it in the background, about four times faster than watching it, and checks 
 plays before keeping it. Nothing is deleted either way: the broadcast stays until you remove
 it yourself.
 
+The player has **jump buttons** either side of play -- ten seconds back, thirty forward.
+Thirty is the commercial-break length people actually tap through, and the arrow keys still
+nudge ten either way for finding an exact moment. They are the only way to skip on a phone,
+which has no arrow keys.
+
 **Play** in the Recordings tab plays one back in the same player, with a seek bar over the
 whole recording. An `mp4` plays straight from the file. A `ts` recording holds MPEG-2 video
 and AC-3 audio, which no browser decodes, so the server converts it to HLS while you watch:

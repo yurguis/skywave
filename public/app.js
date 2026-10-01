@@ -616,6 +616,8 @@ const ICON_PATHS = {
   captions: 'M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1zm7 0h-1.5v-.5h-2v3h2V13H18v1a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1z',
   record: 'M12 6a6 6 0 1 0 0 12a6 6 0 1 0 0-12z',
   stop: 'M6 6h12v12H6z',
+  back: 'M11 18V6l-8.5 6 8.5 6zm.5-6 8.5 6V6l-8.5 6z',
+  forward: 'M13 6v12l8.5-6L13 6zM4 18l8.5-6L4 6v12z',
   fullscreen: 'M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z',
   exitFullscreen: 'M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z',
 };
@@ -632,6 +634,24 @@ function icon(name) {
 
 function iconButton(name, label, onclick, extraClass = '') {
   return h('button', { type: 'button', class: `overlay-icon ${extraClass}`.trim(), title: label, 'aria-label': label, onclick }, icon(name));
+}
+
+/**
+ * A jump of a fixed number of seconds, with the number on it.
+ *
+ * Two arrows on their own read as variable-speed rewind, and on a touch screen there is no
+ * hovering to find out, so the seconds are drawn next to them rather than only announced.
+ */
+function skipButton(name, seconds, onclick) {
+  const label = seconds < 0 ? `Back ${-seconds} seconds` : `Forward ${seconds} seconds`;
+
+  return h('button', {
+    type: 'button',
+    class: 'overlay-icon overlay-skip',
+    title: label,
+    'aria-label': label,
+    onclick,
+  }, icon(name), h('span', { 'aria-hidden': 'true' }, String(Math.abs(seconds))));
 }
 
 function setIcon(button, name, label) {
@@ -680,6 +700,10 @@ function createPlayer(panel) {
   const spinner = h('div', { class: 'overlay-spinner', hidden: true });
   const bigPlayButton = iconButton('play', 'Play', togglePlay, 'overlay-bigplay');
   const playButton = iconButton('play', 'Play', togglePlay);
+  // What commercials are actually skipped with: a few taps forward. Ten back for the line
+  // that was missed doing it.
+  const backButton = skipButton('back', -10, () => seekBy(-10));
+  const forwardButton = skipButton('forward', 30, () => seekBy(30));
   const muteButton = iconButton('muted', 'Unmute', toggleMute);
   const volumeSlider = h('input', { type: 'range', min: '0', max: '1', step: '0.05', value: '1', class: 'overlay-volume', 'aria-label': 'Volume', oninput: onVolumeInput });
   const behindLabel = h('span', { class: 'overlay-time' });
@@ -729,7 +753,7 @@ function createPlayer(panel) {
     h('div', { class: 'overlay-bottom' },
       h('div', { class: 'overlay-seek' }, seekBar),
       h('div', { class: 'overlay-controls' },
-        playButton, stopButton, muteButton, volumeSlider, behindLabel,
+        backButton, playButton, forwardButton, stopButton, muteButton, volumeSlider, behindLabel,
         h('span', { class: 'overlay-spacer' }),
         h('span', { class: 'overlay-quality-wrap' }, qualityButton, qualityMenu),
         h('span', { class: 'overlay-quality-wrap' }, audioButton, audioMenu),
@@ -880,6 +904,8 @@ function createPlayer(panel) {
     const usable = start !== null && end !== null && end - start > 1;
 
     seekBar.disabled = !usable;
+    backButton.disabled = !usable;
+    forwardButton.disabled = !usable;
     if (!usable || seeking) return;
 
     seekBar.min = String(start);
