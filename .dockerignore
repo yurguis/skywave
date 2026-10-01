@@ -15,6 +15,7 @@ test.php
 **/*.ts
 **/*.pcap
 **/*.pcapng
+**/*.cu8
 
 # Local-only ATSC 3.0 inspection tooling. Present in this working tree by choice;
 # never committed, and never copied into the Docker image.
@@ -31,3 +32,6 @@ tools/atsc3-app/
 
 # Locally built AC-4 ffmpeg; the recipe is committed, the binary never is.
 data/ac4/
+
+# Locally built nrsc5, on the same terms.
+data/nrsc5/

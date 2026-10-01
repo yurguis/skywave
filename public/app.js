@@ -17,6 +17,10 @@ const LANGUAGE_NAMES = {
   mul: 'Multiple languages', und: 'Undeclared',
 };
 const QUALITY_STORAGE_KEY = 'hdhomerun.quality';
+const RADIO_STATIONS_STORAGE_KEY = 'skywave.radioStations';
+const RADIO_FREQUENCY_STORAGE_KEY = 'skywave.radioFrequency';
+/** The radio's place in the device list. Not an address, so it can never be mistaken for one. */
+const RADIO_HOST = 'radio';
 const GUIDE_WINDOW_HOURS = 4;
 
 // Identifies this tab to the server while it watches a stream. crypto.randomUUID()
@@ -25,6 +29,8 @@ const VIEWER_ID = Array.from(crypto.getRandomValues(new Uint8Array(12)), (byte) 
 
 const state = {
   devices: [],
+  // What /api/radio said: whether there is a dongle, what it is, and what it is playing.
+  radio: null,
   selectedHost: null,
   manualHosts: loadManualHosts(),
   channelMaps: new Map(),   // name -> Promise<[{number, frequency}]>
@@ -33,6 +39,7 @@ const state = {
   player: null,
   guideView: null,
   recordingsView: null,
+  radioView: null,
 };
 
 const TAB_LABELS = { tuners: 'Tuners', guide: 'Guide', recordings: 'Recordings', logs: 'Logs' };
@@ -225,13 +232,24 @@ async function loadDevices() {
     showError(error);
   }
 
+  // The radio is asked about on its own: it is not an HDHomeRun, and a server without one
+  // simply says so. Failing to ask must not cost the page its tuners.
+  try {
+    state.radio = await api('/api/radio');
+  } catch {
+    state.radio = null;
+  }
+
   renderDeviceList();
 
   const selected = state.devices.find((device) => device.host === state.selectedHost && !device.error);
   const firstUsable = state.devices.find((device) => !device.error);
+  const radio = Boolean(state.radio?.enabled);
 
   if (selected) selectDevice(selected.host);
+  else if (radio && state.selectedHost === RADIO_HOST) selectRadio();
   else if (firstUsable) selectDevice(firstUsable.host);
+  else if (radio) selectRadio();
   else renderEmptyDetail();
 }
 
@@ -257,12 +275,29 @@ async function rememberManualHosts() {
 function renderDeviceList() {
   const list = document.getElementById('device-list');
 
-  if (state.devices.length === 0) {
+  const radio = state.radio?.enabled ? state.radio : null;
+
+  if (state.devices.length === 0 && radio === null) {
     list.replaceChildren(h('li', { class: 'muted' }, 'No devices found. Add one by IP address.'));
     return;
   }
 
-  list.replaceChildren(...state.devices.map((device) => h('li', { class: 'device-item' },
+  // Last in the list, and never removable from the page: where the dongle is belongs to
+  // the server's settings, not to a browser.
+  const radioItem = radio && h('li', { class: 'device-item' },
+    h('button', {
+      type: 'button',
+      'aria-current': state.selectedHost === RADIO_HOST ? 'true' : 'false',
+      onclick: () => selectRadio(),
+    },
+      h('span', { class: 'name' }, 'HD Radio'),
+      radio.error
+        ? h('span', { class: 'error' }, radio.error)
+        : h('span', { class: 'meta' }, [radio.label, radio.device?.tuner].filter(Boolean).join(' · ')),
+    ),
+  );
+
+  list.replaceChildren(...[...state.devices.map((device) => h('li', { class: 'device-item' },
     h('button', {
       type: 'button',
       'aria-current': device.host === state.selectedHost ? 'true' : 'false',
@@ -283,7 +318,7 @@ function renderDeviceList() {
       'aria-label': `Remove ${device.host}`,
       onclick: () => removeManualHost(device.host),
     }, '×'),
-  )));
+  )), radioItem].filter(Boolean));
 }
 
 async function removeManualHost(host) {
@@ -307,6 +342,8 @@ function renderEmptyDetail() {
   state.guideView = null;
   state.recordingsView?.destroy();
   state.recordingsView = null;
+  state.radioView?.destroy();
+  state.radioView = null;
   document.getElementById('device-detail').replaceChildren(h('p', { class: 'muted' }, 'Select a device.'));
 }
 
@@ -316,6 +353,9 @@ function selectDevice(host) {
 
   state.selectedHost = host;
   renderDeviceList();
+
+  state.radioView?.destroy();
+  state.radioView = null;
 
   state.player?.stop();
   const playerPanel = h('section', { class: 'player card', hidden: true });
@@ -665,6 +705,8 @@ function createPlayer(panel) {
   let session = null;
   // A recording being watched back: no tuner, no live edge, and a fixed length.
   let vod = null;
+  // A radio station being listened to: sound only, and the station describes itself.
+  let radio = null;
   let hls = null;
   let timer = null;
   let current = null;
@@ -689,6 +731,10 @@ function createPlayer(panel) {
   const status = h('div', { class: 'overlay-status', hidden: true });
   const stopButton = iconButton('stop', 'Stop playback', () => stop());
   const video = h('video', { autoplay: true, playsinline: true });
+  // Radio has no picture of its own, so what the station sent stands in for one: the cover
+  // of what is playing, or the station's logo.
+  const artLayer = h('img', { class: 'overlay-art', alt: '', hidden: true });
+  artLayer.addEventListener('error', () => { artLayer.hidden = true; });
   // Browsers only autoplay muted video, and the muted attribute set from script does not
   // mute the element, so set the property. The viewer unmutes from the controls.
   video.muted = true;
@@ -760,6 +806,7 @@ function createPlayer(panel) {
 
   const wrap = h('div', { class: 'video-wrap', tabindex: '0' },
     video,
+    artLayer,
     captionLayer,
     spinner,
     status,
@@ -1295,7 +1342,8 @@ function createPlayer(panel) {
     if (wrap.classList.contains('controls-hidden')) controlsRevealedAt = Date.now();
     wrap.classList.remove('controls-hidden');
     clearTimeout(hideTimer);
-    if (!video.paused && !pointerOnControls && qualityMenu.hidden) hideTimer = setTimeout(() => wrap.classList.add('controls-hidden'), 3000);
+    // With no picture to get out of the way of, radio keeps its controls up.
+    if (!radio && !video.paused && !pointerOnControls && qualityMenu.hidden) hideTimer = setTimeout(() => wrap.classList.add('controls-hidden'), 3000);
   }
 
   /** Send the controls away now, rather than waiting for them to fade. */
@@ -1531,15 +1579,21 @@ function createPlayer(panel) {
         session = null;
         spinner.hidden = true;
         setStatus(`Playback stopped: ${state.error}`, true);
+        radio?.onStation?.(null);
         return;
       }
 
       audioSources = state.audio ?? [];
 
+      if (state.radio && radio) showStation(state.radio);
+
       if (state.ready && !hls && !video.getAttribute('src')) {
         attach(state.playlist);
       } else if (!state.ready) {
-        setStatus('Starting the transcoder…');
+        // Nothing is written until the station is found, and it may never be: a
+        // frequency with no HD Radio on it looks exactly like one still being searched.
+        setStatus(!radio ? 'Starting the transcoder…'
+          : state.radio?.synchronized ? 'Starting…' : 'Looking for the station…');
       }
 
       applyCaptions();
@@ -1552,7 +1606,73 @@ function createPlayer(panel) {
       return;
     }
 
-    timer = setTimeout(poll, hls || video.getAttribute('src') ? 5000 : 1000);
+    // Radio asks more often once it is playing: the answer carries the song, and a title
+    // that changed a few seconds ago is worth more than one that changed a while back.
+    timer = setTimeout(poll, hls || video.getAttribute('src') ? (radio ? 2000 : 5000) : 1000);
+  }
+
+  /**
+   * Listen to an HD Radio program. There is no tuner to find and no guide to consult: the
+   * station says who it is and what it is playing, and that arrives with each poll.
+   */
+  async function playRadio({ frequency, program, onStation }) {
+    await stop();
+
+    radio = { frequency, program, onStation };
+    // Live, like a channel: the playlist rolls and can be rewound. Nothing here records
+    // it, there is one size of it, and there is no picture to fill a screen with.
+    liveButton.hidden = false;
+    recordButton.hidden = true;
+    settings.hidden = true;
+    fullscreenButton.hidden = true;
+    wrap.classList.add('is-radio');
+    // Television starts muted because that is the only way a browser will start it
+    // unasked. Nobody presses Listen to hear nothing, and the press is the asking.
+    video.muted = false;
+    panel.hidden = false;
+    showStation({ frequency, program });
+    spinner.hidden = false;
+    setStatus('Tuning…');
+    showControls();
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    try {
+      session = await api('/api/radio/stream', {
+        method: 'POST',
+        body: JSON.stringify({ frequency, program, viewer: VIEWER_ID }),
+      });
+    } catch (error) {
+      spinner.hidden = true;
+      setStatus(error.message, true);
+
+      return;
+    }
+
+    poll();
+  }
+
+  /** Put what the station says about itself where a channel's name and programme would go. */
+  function showStation(station) {
+    const dial = `${Number(station.frequency).toFixed(1)} FM · HD${station.program + 1}`;
+
+    channelLabel.replaceChildren(h('span', {}, station.station ? `${station.station} · ${dial}` : dial));
+    programLabel.replaceChildren(...[
+      station.title && h('span', { class: 'overlay-title' }, station.title),
+      station.artist && h('span', {}, station.artist),
+      !station.title && !station.artist && station.slogan && h('span', {}, station.slogan),
+    ].filter(Boolean));
+
+    const picture = station.art ?? station.logo ?? null;
+
+    if (picture === null) {
+      artLayer.hidden = true;
+    } else {
+      // Only when it changes: setting the same address again makes the picture blink.
+      if (artLayer.getAttribute('src') !== picture) artLayer.src = picture;
+      artLayer.hidden = false;
+    }
+
+    radio?.onStation?.(station);
   }
 
   /**
@@ -1753,7 +1873,15 @@ function createPlayer(panel) {
       return;
     }
 
-    video.play().catch(() => { /* autoplay blocked; the controls still work */ });
+    video.play().catch(() => {
+      // Autoplay blocked; the controls still work. Radio asked to start with its sound on,
+      // which a browser may refuse where it would have allowed silence, so it settles for
+      // silence rather than for nothing.
+      if (radio && !video.muted) {
+        video.muted = true;
+        video.play().catch(() => {});
+      }
+    });
 
     // timeupdate stops while paused, but the live edge keeps moving away.
     clearInterval(liveTimer);
@@ -1793,12 +1921,20 @@ function createPlayer(panel) {
 
     const ending = session;
     const endingRecording = vod;
+    const endingRadio = radio;
     session = null;
     vod = null;
+    radio = null;
     current = null;
     airing = null;
     liveButton.hidden = false;
     recordButton.hidden = false;
+    settings.hidden = false;
+    fullscreenButton.hidden = false;
+    wrap.classList.remove('is-radio');
+    artLayer.hidden = true;
+    artLayer.removeAttribute('src');
+    endingRadio?.onStation?.(null);
     panel.hidden = true;
     spinner.hidden = true;
     centre.hidden = true;
@@ -1822,7 +1958,7 @@ function createPlayer(panel) {
     if (session) navigator.sendBeacon(`/api/streams/${session.id}/leave?viewer=${VIEWER_ID}`);
   }
 
-  return { play, playFile, playAtsc3, stop, leaveOnUnload, recordingsChanged: updateRecordButton };
+  return { play, playFile, playAtsc3, playRadio, stop, leaveOnUnload, recordingsChanged: updateRecordButton };
 }
 
 // ---------------------------------------------------------------------------
@@ -3284,6 +3420,238 @@ function renderGuideTables(report) {
       ))),
     )),
   );
+}
+
+// ---------------------------------------------------------------------------
+// HD Radio
+
+/**
+ * The radio takes the place a device's tabs would: it has no tuners to list, no guide and
+ * nothing to record, only a dial and whatever the station on it says about itself.
+ */
+function selectRadio() {
+  const radio = state.radio;
+  if (!radio?.enabled) return;
+
+  state.selectedHost = RADIO_HOST;
+  renderDeviceList();
+
+  stopPolling();
+  state.tunerCards = [];
+  state.guideView?.destroy();
+  state.guideView = null;
+  state.recordingsView?.destroy();
+  state.recordingsView = null;
+  state.radioView?.destroy();
+
+  state.player?.stop();
+  const playerPanel = h('section', { class: 'player card', hidden: true });
+  state.player = createPlayer(playerPanel);
+  state.radioView = createRadioView(radio, state.player);
+
+  document.getElementById('device-detail').replaceChildren(...[
+    h('div', { class: 'device-header' },
+      h('h3', {}, 'HD Radio'),
+      h('div', { class: 'facts' },
+        h('span', {}, 'Dongle ', h('b', {}, radio.label)),
+        radio.device && h('span', {}, 'Tuner ', h('b', {}, radio.device.tuner)),
+      ),
+    ),
+    radio.error && h('p', { class: 'radio-error' }, radio.error),
+    playerPanel,
+    state.radioView.root,
+  ].filter(Boolean));
+}
+
+function loadRadioStations() {
+  try {
+    const stations = JSON.parse(loadSetting(RADIO_STATIONS_STORAGE_KEY) || '[]');
+    return Array.isArray(stations) ? stations.filter((station) => Number.isFinite(station?.frequency)) : [];
+  } catch {
+    return [];
+  }
+}
+
+function createRadioView(radio, player) {
+  // What was asked for, and the token that says a station's news is still about it: a
+  // station that was switched away from keeps reporting until it has stopped.
+  let listening = null;
+  let station = null;
+  let hintTimer = null;
+  let stations = loadRadioStations();
+
+  const frequencyInput = h('input', {
+    type: 'number',
+    inputmode: 'decimal',
+    min: String(radio.band.from),
+    max: String(radio.band.to),
+    step: '0.1',
+    required: true,
+    placeholder: '90.5',
+    'aria-label': 'Frequency in MHz',
+  });
+  const programButtons = h('div', { class: 'radio-programs' });
+  const stationButtons = h('div', { class: 'radio-stations' });
+  const nowPlaying = h('div', { class: 'radio-now' });
+
+  const root = h('section', { class: 'radio card' },
+    h('form', { class: 'radio-tune', onsubmit: onTune },
+      frequencyInput,
+      h('span', { class: 'muted' }, 'MHz'),
+      h('button', { type: 'submit' }, 'Listen'),
+      programButtons,
+    ),
+    stationButtons,
+    nowPlaying,
+  );
+
+  // Somebody may already be listening -- this browser before a reload, or another one.
+  // Offer their station rather than the last one typed here: the dongle is already on it.
+  let playing = radio.session?.radio ?? null;
+  const remembered = Number(loadSetting(RADIO_FREQUENCY_STORAGE_KEY));
+
+  if (playing) frequencyInput.value = Number(playing.frequency).toFixed(1);
+  else if (remembered >= radio.band.from && remembered <= radio.band.to) frequencyInput.value = remembered.toFixed(1);
+
+  render();
+
+  function onTune(event) {
+    event.preventDefault();
+
+    const frequency = Math.round(Number(frequencyInput.value) * 10) / 10;
+    if (!Number.isFinite(frequency)) return;
+
+    listen(frequency, 0);
+  }
+
+  function listen(frequency, program) {
+    const mine = { frequency, program, since: Date.now() };
+
+    listening = mine;
+    station = null;
+    // Whatever was playing when the page opened is not what is playing now.
+    playing = null;
+    frequencyInput.value = frequency.toFixed(1);
+    saveSetting(RADIO_FREQUENCY_STORAGE_KEY, String(frequency));
+    render();
+
+    // If nothing has been found in a while, say that this may be all there is to find.
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(render, 20000);
+
+    player.playRadio({
+      frequency,
+      program,
+      onStation: (next) => {
+        if (listening !== mine) return;
+
+        if (next === null) listening = null;
+        station = next;
+        if (next?.station) remember(frequency, next.station);
+        render();
+      },
+    });
+  }
+
+  /** Stations that have been heard, kept so they can be picked rather than typed. */
+  function remember(frequency, name) {
+    const known = stations.find((candidate) => candidate.frequency === frequency);
+    if (known?.name === name) return;
+
+    stations = [...stations.filter((candidate) => candidate.frequency !== frequency), { frequency, name }]
+      .sort((a, b) => a.frequency - b.frequency);
+    saveSetting(RADIO_STATIONS_STORAGE_KEY, JSON.stringify(stations));
+  }
+
+  function forget(frequency) {
+    stations = stations.filter((candidate) => candidate.frequency !== frequency);
+    saveSetting(RADIO_STATIONS_STORAGE_KEY, JSON.stringify(stations));
+    render();
+  }
+
+  function render() {
+    stationButtons.replaceChildren(...stations.map((saved) => h('span', { class: 'radio-station' },
+      h('button', {
+        type: 'button',
+        class: 'secondary',
+        'aria-pressed': String(listening?.frequency === saved.frequency),
+        onclick: () => listen(saved.frequency, 0),
+      }, h('b', {}, saved.frequency.toFixed(1)), ` ${saved.name}`),
+      h('button', {
+        type: 'button',
+        class: 'secondary remove',
+        title: `Forget ${saved.name}`,
+        'aria-label': `Forget ${saved.name}`,
+        onclick: () => forget(saved.frequency),
+      }, '×'),
+    )));
+    stationButtons.hidden = stations.length === 0;
+
+    // HD1 is always there; the rest are offered once the station has said it has them.
+    const numbers = new Set([0, ...(station?.programs ?? []).map((program) => program.number)]);
+    if (listening) numbers.add(listening.program);
+
+    programButtons.replaceChildren(...[...numbers].sort((a, b) => a - b).map((number) => {
+      const details = (station?.programs ?? []).find((program) => program.number === number);
+
+      return h('button', {
+        type: 'button',
+        class: 'secondary',
+        title: [details?.name, details?.type].filter(Boolean).join(' · ') || null,
+        'aria-pressed': String(listening?.program === number),
+        onclick: () => listen(listening.frequency, number),
+      }, `HD${number + 1}`);
+    }));
+    programButtons.hidden = listening === null;
+
+    nowPlaying.replaceChildren(...describe().filter(Boolean));
+  }
+
+  function describe() {
+    if (listening === null) {
+      return [
+        playing && h('p', {}, `The radio is on ${playing.station ? `${playing.station}, ` : ''}${Number(playing.frequency).toFixed(1)} FM HD${playing.program + 1}.`),
+        h('p', { class: 'muted' }, 'Enter a frequency to listen. HD Radio stations in North America sit on the odd tenths: 88.1, 90.5, 101.1.'),
+      ];
+    }
+
+    const dial = `${listening.frequency.toFixed(1)} FM`;
+
+    if (!station?.synchronized) {
+      return [
+        h('p', {}, `Looking for HD Radio on ${dial}…`),
+        Date.now() - listening.since >= 20000 && h('p', { class: 'muted' },
+          'Nothing digital yet. Not every station broadcasts HD Radio, and one that does needs a stronger signal than its analogue sound.'),
+      ];
+    }
+
+    const signal = [
+      station.mer !== null && station.mer !== undefined && `Signal ${station.mer.toFixed(1)} dB`,
+      station.bitrate && `${Math.round(station.bitrate)} kbps`,
+      station.gain !== null && station.gain !== undefined && `Gain ${station.gain.toFixed(1)} dB`,
+    ].filter(Boolean).join(' · ');
+
+    return [
+      h('h4', {}, station.station ?? dial),
+      station.slogan && h('p', { class: 'muted' }, station.slogan),
+      station.alert && h('p', { class: 'radio-error' }, station.alert),
+      (station.title || station.artist) && h('dl', { class: 'kv' },
+        station.title && [h('dt', {}, 'Title'), h('dd', {}, station.title)],
+        station.artist && [h('dt', {}, 'Artist'), h('dd', {}, station.artist)],
+        station.album && [h('dt', {}, 'Album'), h('dd', {}, station.album)],
+        station.genre && [h('dt', {}, 'Genre'), h('dd', {}, station.genre)],
+      ),
+      station.message && h('p', { class: 'muted' }, station.message),
+      signal && h('p', { class: 'muted radio-signal' }, signal),
+    ];
+  }
+
+  function destroy() {
+    clearTimeout(hintTimer);
+    listening = null;
+  }
+
+  return { root, destroy };
 }
 
 // ---------------------------------------------------------------------------

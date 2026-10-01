@@ -30,6 +30,8 @@ use Skywave\Hdhomerun\Packet;
 use Skywave\Hdhomerun\StreamAnalyzer;
 use Skywave\Hdhomerun\StreamProgram;
 use Skywave\Hdhomerun\Tuner;
+use Skywave\Radio\Receiver;
+use Skywave\Radio\RtlTcpClient;
 use Skywave\Report\JsonRenderer;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -52,6 +54,9 @@ use Symfony\Component\HttpFoundation\Request;
  *   GET    /api/streams                                  active playback sessions
  *   GET    /api/streams/{id}?viewer=<id>                 session state; keeps the viewer watching
  *   DELETE /api/streams/{id}?viewer=<id>                 stop watching (POST .../leave for sendBeacon)
+ *
+ *   GET  /api/radio                                      the HD Radio dongle and what it is playing
+ *   POST /api/radio/stream  {"frequency": 90.5, "program": 0, "viewer": "<id>"}   listen to a station
  *
  *   GET  /api/guide?device=<ip>&from=<unix>&hours=4      stored guide for a time window
  *   POST /api/guide/scan     {"device": "<ip>"}          find channels in the background
@@ -95,6 +100,8 @@ class Api
 
     private ?SeriesRules $series;
 
+    private ?Receiver $radio;
+
     /**
      * @param string[] $configuredHosts devices to list even when broadcast discovery cannot reach them
      * @param LiveStreams|null $streams live playback, or null to disable it
@@ -104,6 +111,7 @@ class Api
      * @param Recorder|null $recorder stops recordings and finds their files
      * @param TunerReservations|null $reservations tuners a recording is using
      * @param RecordingPlayback|null $playback watching recordings back
+     * @param Receiver|null $radio the HD Radio dongle, or null when there is none to speak of
      */
     public function __construct(
         Discovery $discovery,
@@ -116,7 +124,8 @@ class Api
         ?TunerReservations $reservations = null,
         ?RecordingPlayback $playback = null,
         ?Logs $logs = null,
-        ?SeriesRules $series = null
+        ?SeriesRules $series = null,
+        ?Receiver $radio = null
     ) {
         $this->discovery       = $discovery;
         $this->configuredHosts = $configuredHosts;
@@ -129,6 +138,7 @@ class Api
         $this->playback        = $playback;
         $this->logs            = $logs;
         $this->series          = $series;
+        $this->radio           = $radio;
     }
 
     public function handle(Request $request): JsonResponse
@@ -193,6 +203,18 @@ class Api
 
         if ($path === '/api/streams' || str_starts_with($path, '/api/streams/')) {
             return $this->routeStreams($method, $path, $request);
+        }
+
+        if ($path === '/api/radio') {
+            self::requireMethod($method, 'GET');
+
+            return $this->describeRadio();
+        }
+
+        if ($path === '/api/radio/stream') {
+            self::requireMethod($method, 'POST');
+
+            return $this->startRadio(self::jsonBody($request));
         }
 
         if ($path === '/api/guide') {
@@ -809,6 +831,70 @@ class Api
         }
 
         throw new ApiException("No such ATSC 3.0 station: $virtual", 404);
+    }
+
+    /**
+     * The radio as the page needs it: whether there is one, what dongle it is, and what it
+     * is playing.
+     *
+     * A dongle shared over rtl_tcp can be asked what it is, but only while nothing is
+     * listening through it: it answers one client at a time, and nrsc5 is that client for
+     * as long as a station plays. So the question is only put while the radio is idle.
+     *
+     * @return array<string, mixed>
+     */
+    private function describeRadio(): array
+    {
+        if ($this->radio === null || !$this->radio->isConfigured()) {
+            return ['enabled' => false];
+        }
+
+        $session = $this->streams === null ? null : $this->streams->radioSession();
+        $address = $this->radio->rtlTcpAddress();
+        $device  = null;
+        $error   = null;
+
+        if ($this->streams === null) {
+            $error = 'Live playback is not enabled';
+        } elseif ($this->radio->binary() === null) {
+            $error = $this->radio->whyMissing();
+        } elseif ($session === null && $address !== null) {
+            try {
+                $device = (new RtlTcpClient($address['host'], $address['port']))->probe();
+            } catch (RuntimeException $e) {
+                $error = $e->getMessage();
+            }
+        }
+
+        return [
+            'enabled' => true,
+            'device'  => $device,
+            'error'   => $error,
+            'session' => $session,
+            'band'    => ['from' => Receiver::MIN_FREQUENCY, 'to' => Receiver::MAX_FREQUENCY],
+        ] + $this->radio->describe();
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     * @return array<string, mixed>
+     */
+    private function startRadio(array $body): array
+    {
+        if ($this->radio === null || !$this->radio->isConfigured()) {
+            throw new ApiException('HD Radio is not enabled: set RADIO_RTL_TCP or RADIO_DEVICE', 404);
+        }
+
+        if ($this->radio->binary() === null) {
+            throw new ApiException($this->radio->whyMissing(), 503);
+        }
+
+        return $this->liveStreams()->joinRadio(
+            $this->radio,
+            Receiver::validateFrequency($body['frequency'] ?? null),
+            Receiver::validateProgram($body['program'] ?? 0),
+            self::validateViewer($body['viewer'] ?? null)
+        );
     }
 
     private function liveStreams(): LiveStreams

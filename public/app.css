@@ -535,6 +535,23 @@ button:disabled { opacity: .55; cursor: progress; }
 .video-wrap .overlay-centre button.overlay-skip svg { width: 22px; height: 22px; }
 .video-wrap .overlay-centre button.overlay-skip span { margin-top: -2px; font-size: 10px; }
 
+/* Radio: no picture, so the player is a strip rather than a screen, with what the station
+   sent -- a cover or its logo -- where the picture would be. */
+.video-wrap.is-radio { aspect-ratio: auto; height: clamp(190px, 30vw, 260px); }
+.video-wrap.is-radio video { opacity: 0; }
+
+.overlay-art {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  max-width: 40%;
+  max-height: 52%;
+  transform: translate(-50%, -50%);
+  border-radius: 6px;
+  box-shadow: 0 2px 12px rgb(0 0 0 / .6);
+  pointer-events: none;
+}
+
 .overlay-spinner {
   position: absolute;
   left: 50%;
@@ -1113,3 +1130,23 @@ button.record.is-recording,
 @media (max-width: 800px) {
   .site-footer { padding: 0 12px 12px; }
 }
+
+/* HD Radio */
+
+.radio { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.radio-tune { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.radio-tune input { width: 96px; font-variant-numeric: tabular-nums; }
+.radio-programs, .radio-stations { display: flex; flex-wrap: wrap; gap: 6px; }
+.radio-programs { margin-left: 8px; }
+.radio button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+
+/* A station and the button that forgets it, joined so they read as one thing. */
+.radio-station { display: inline-flex; }
+.radio-station button:first-child { border-radius: 6px 0 0 6px; }
+.radio-station button.remove { border-left: 0; border-radius: 0 6px 6px 0; padding: 6px 8px; color: var(--muted); }
+.radio-station button.remove:hover { color: var(--red); }
+
+.radio-now { display: grid; gap: 6px; }
+.radio-now p { margin: 0; }
+.radio-signal { font-variant-numeric: tabular-nums; }
+.radio-error { margin: 0; color: var(--red); }
