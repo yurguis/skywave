@@ -270,6 +270,11 @@ Thirty is the commercial-break length people actually tap through, and the arrow
 nudge ten either way for finding an exact moment. They are the only way to skip on a phone,
 which has no arrow keys.
 
+On a narrow screen the picture size, audio track and captions move behind a cog at the right
+of the controls: three named controls and the buttons do not fit on one line on a phone, and
+squeezing them shrank the jump arrows to nothing. On a wide screen they stay in the row and
+there is no cog.
+
 **Play** in the Recordings tab plays one back in the same player, with a seek bar over the
 whole recording. An `mp4` plays straight from the file. A `ts` recording holds MPEG-2 video
 and AC-3 audio, which no browser decodes, so the server converts it to HLS while you watch:
