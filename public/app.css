@@ -406,7 +406,11 @@ button:disabled { opacity: .55; cursor: progress; }
 .overlay-time { margin-left: 8px; font-size: 13px; color: rgb(255 255 255 / .85); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .overlay-spacer { flex: 1; }
 
-.overlay-quality-wrap { position: relative; display: inline-flex; }
+/* Quality, audio and captions. On a wide screen they sit in the row as they always did and
+   the cog is not shown; see the narrow-screen block for what changes. */
+.overlay-settings { position: relative; display: inline-flex; align-items: center; }
+.overlay-settings-panel { display: inline-flex; align-items: center; gap: 4px; }
+.video-wrap button.overlay-cog { display: none; }
 
 .video-wrap button.overlay-quality {
   height: 30px;
@@ -428,6 +432,12 @@ button:disabled { opacity: .55; cursor: progress; }
   right: 0;
   bottom: calc(100% + 8px);
   min-width: 230px;
+  /* The player clips anything outside it, and on a phone it is only a couple of hundred
+     pixels tall, so a menu taller than the room above the controls lost its top. The wrap is
+     the container and is 16:9, so its height is 56.25% of its width. */
+  max-height: calc(56.25cqw - 56px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 6px 0;
   border-radius: 8px;
   background: rgb(22 22 22 / .95);
@@ -528,11 +538,33 @@ button:disabled { opacity: .55; cursor: progress; }
 @media (max-width: 520px) {
   .overlay-volume, .overlay-next, .overlay-time { display: none; }
   .video-wrap button.overlay-icon { width: 34px; height: 34px; }
-  /* Two rows rather than one that does not fit: squeezing it put the jump arrows at zero
-     width and pushed full screen past the edge. */
-  .overlay-controls { flex-wrap: wrap; justify-content: center; row-gap: 2px; }
-  .overlay-spacer { display: none; }
   .video-wrap button.overlay-skip { padding: 0 7px; }
+
+  /* The row cannot hold three named controls as well as the buttons, so they go behind the
+     cog and come back as a column above it. Kept as a last resort: if something else is ever
+     added to the row, it wraps rather than squeezing the icons away. */
+  .overlay-controls { flex-wrap: wrap; justify-content: flex-end; row-gap: 2px; }
+  .video-wrap button.overlay-cog { display: inline-grid; }
+
+  .overlay-settings-panel {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 6px);
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    padding: 4px;
+    border-radius: 10px;
+    background: rgb(20 22 26 / .96);
+    box-shadow: 0 8px 24px rgb(0 0 0 / .5);
+  }
+
+  .overlay-settings.open .overlay-settings-panel { display: flex; }
+  .video-wrap .overlay-settings-panel button.overlay-quality { width: 100%; justify-content: flex-start; text-align: left; }
+
+  /* A menu covers the panel while it is open, which is what should have attention. */
+  .overlay-settings .overlay-menu { min-width: 0; width: max-content; max-width: calc(100vw - 24px); }
   .overlay-top { padding: 8px 10px 20px; }
   .video-wrap:not(.controls-hidden) .overlay-captions { bottom: 64px; }
   .overlay-menu { min-width: 180px; padding: 3px 0; }

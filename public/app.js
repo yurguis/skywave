@@ -618,6 +618,7 @@ const ICON_PATHS = {
   stop: 'M6 6h12v12H6z',
   back: 'M11 18V6l-8.5 6 8.5 6zm.5-6 8.5 6V6l-8.5 6z',
   forward: 'M13 6v12l8.5-6L13 6zM4 18l8.5-6L4 6v12z',
+  settings: 'M19.4 13a7.8 7.8 0 0 0 0-2l2.1-1.6a.5.5 0 0 0 .1-.6l-2-3.5a.5.5 0 0 0-.6-.2l-2.5 1a7.3 7.3 0 0 0-1.7-1l-.4-2.6a.5.5 0 0 0-.5-.4h-4a.5.5 0 0 0-.5.4l-.4 2.6a7.3 7.3 0 0 0-1.7 1l-2.5-1a.5.5 0 0 0-.6.2l-2 3.5a.5.5 0 0 0 .1.6L4.6 11a7.8 7.8 0 0 0 0 2l-2.1 1.6a.5.5 0 0 0-.1.6l2 3.5a.5.5 0 0 0 .6.2l2.5-1a7.3 7.3 0 0 0 1.7 1l.4 2.6a.5.5 0 0 0 .5.4h4a.5.5 0 0 0 .5-.4l.4-2.6a7.3 7.3 0 0 0 1.7-1l2.5 1a.5.5 0 0 0 .6-.2l2-3.5a.5.5 0 0 0-.1-.6zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z',
   fullscreen: 'M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z',
   exitFullscreen: 'M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z',
 };
@@ -737,6 +738,19 @@ function createPlayer(panel) {
     onclick: toggleAudioMenu,
   }, 'Audio');
   const audioMenu = h('div', { class: 'overlay-menu', role: 'menu', 'aria-label': 'Audio', hidden: true });
+  // On a phone the row cannot hold three named controls beside the buttons, so they move
+  // behind a cog. The markup is the same at every width: a wide screen shows the panel inline
+  // and hides the cog, a narrow one hides the panel until the cog is pressed.
+  const settingsPanel = h('div', { class: 'overlay-settings-panel' }, qualityButton, audioButton, captionsButton);
+  const settingsButton = iconButton('settings', 'Playback settings', toggleSettings, 'overlay-cog');
+  settingsButton.setAttribute('aria-haspopup', 'true');
+  settingsButton.setAttribute('aria-expanded', 'false');
+  // The menus hang off this box rather than off their own buttons: the buttons sit together
+  // at the right, so one anchor serves all three, and it keeps them out of the panel, which
+  // on a narrow screen is itself positioned and pushed them up past the top of the player.
+  const settings = h('span', { class: 'overlay-settings' },
+    settingsPanel, qualityMenu, audioMenu, captionsMenu, settingsButton);
+
   const recordButton = iconButton('record', 'Record this program', recordCurrentProgram, 'overlay-record');
   const fullscreenButton = iconButton('fullscreen', 'Full screen', toggleFullscreen);
 
@@ -755,9 +769,7 @@ function createPlayer(panel) {
       h('div', { class: 'overlay-controls' },
         backButton, playButton, forwardButton, stopButton, muteButton, volumeSlider, behindLabel,
         h('span', { class: 'overlay-spacer' }),
-        h('span', { class: 'overlay-quality-wrap' }, qualityButton, qualityMenu),
-        h('span', { class: 'overlay-quality-wrap' }, audioButton, audioMenu),
-        h('span', { class: 'overlay-quality-wrap' }, captionsButton, captionsMenu),
+        settings,
         recordButton, fullscreenButton,
       ),
     ),
@@ -791,6 +803,7 @@ function createPlayer(panel) {
     if (!qualityMenu.hidden && !qualityMenu.contains(event.target) && !qualityButton.contains(event.target)) closeQualityMenu();
     if (!captionsMenu.hidden && !captionsMenu.contains(event.target) && !captionsButton.contains(event.target)) closeCaptionsMenu();
     if (!audioMenu.hidden && !audioMenu.contains(event.target) && !audioButton.contains(event.target)) closeAudioMenu();
+    if (!settings.contains(event.target)) closeSettings();
   });
 
   // While dragging, show where the drop would land; seek on release.
@@ -1153,6 +1166,28 @@ function createPlayer(panel) {
 
     // Nothing known about it: better to say nothing than to show a track number.
     return track.lang ? '' : (track.name ?? '');
+  }
+
+  /**
+   * Show or hide the settings panel. It only hides on a narrow screen, where the cog is the
+   * way in; on a wide one the three controls sit in the row and the cog is not shown at all.
+   */
+  function toggleSettings() {
+    const open = settings.classList.toggle('open');
+    settingsButton.setAttribute('aria-expanded', String(open));
+
+    if (!open) {
+      closeQualityMenu();
+      closeAudioMenu();
+      closeCaptionsMenu();
+    }
+  }
+
+  function closeSettings() {
+    if (!settings.classList.contains('open')) return;
+
+    settings.classList.remove('open');
+    settingsButton.setAttribute('aria-expanded', 'false');
   }
 
   function toggleAudioMenu() {
