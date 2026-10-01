@@ -384,6 +384,23 @@ RADIO_DEVICE=0 PHP_CLI_SERVER_WORKERS=4 php -S 0.0.0.0:8080 -t public public/ind
 or on the host while Skywave runs in a container that cannot be given the USB device. It
 serves one listener at a time, and so does a dongle opened directly.
 
+On Linux the dongle arrives already taken. The kernel sees an RTL2832U, loads the DVB-T
+driver it was sold as needing, and librtlsdr is then refused it -- `usb_claim_interface
+error -6`, or simply "device is already in use". Say once that the kernel should leave it
+alone:
+
+```bash
+printf 'blacklist dvb_usb_rtl28xxu\nblacklist rtl2832\nblacklist rtl2830\n' \
+  | sudo tee /etc/modprobe.d/blacklist-rtl-sdr.conf
+sudo modprobe -r dvb_usb_rtl28xxu
+```
+
+Who may then open it is decided by librtlsdr's udev rules, which a distribution's package
+usually installs; without them the dongle is root's alone, and running `rtl_tcp` as root is
+no way to keep something up for months. Both of these belong to the machine the dongle is
+plugged into -- a container has no kernel of its own, so passing the device in does not
+help until the host has let go of it. macOS has no such driver and needs none of this.
+
 Nothing on the FM band announces what else is on it, so the only station list there can
 be is the one made by listening. A station is kept as a button once it has been played, in
 the guide's database, so every browser and phone sees the same ones; the × beside it
