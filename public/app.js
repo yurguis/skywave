@@ -609,15 +609,15 @@ function meter(label) {
 // Live playback
 
 const ICON_PATHS = {
-  play: 'M8 5v14l11-7z',
+  play: 'M7 5v14l11-7z',
   pause: 'M6 5h4v14H6zM14 5h4v14h-4z',
   volume: 'M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z',
   muted: 'M3 9v6h4l5 5V4L7 9H3zm15.1 3 2.7-2.7-1.4-1.4-2.7 2.7-2.7-2.7-1.4 1.4 2.7 2.7-2.7 2.7 1.4 1.4 2.7-2.7 2.7 2.7 1.4-1.4z',
   captions: 'M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1zm7 0h-1.5v-.5h-2v3h2V13H18v1a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1z',
   record: 'M12 6a6 6 0 1 0 0 12a6 6 0 1 0 0-12z',
   stop: 'M6 6h12v12H6z',
-  back: 'M11 18V6l-8.5 6 8.5 6zm.5-6 8.5 6V6l-8.5 6z',
-  forward: 'M13 6v12l8.5-6L13 6zM4 18l8.5-6L4 6v12z',
+  back: 'M11.75 18V6l-8.5 6 8.5 6zm.5-6 8.5 6V6l-8.5 6z',
+  forward: 'M12.25 6v12l8.5-6L12.25 6zM3.25 18l8.5-6L3.25 6v12z',
   settings: 'M19.4 13a7.8 7.8 0 0 0 0-2l2.1-1.6a.5.5 0 0 0 .1-.6l-2-3.5a.5.5 0 0 0-.6-.2l-2.5 1a7.3 7.3 0 0 0-1.7-1l-.4-2.6a.5.5 0 0 0-.5-.4h-4a.5.5 0 0 0-.5.4l-.4 2.6a7.3 7.3 0 0 0-1.7 1l-2.5-1a.5.5 0 0 0-.6.2l-2 3.5a.5.5 0 0 0 .1.6L4.6 11a7.8 7.8 0 0 0 0 2l-2.1 1.6a.5.5 0 0 0-.1.6l2 3.5a.5.5 0 0 0 .6.2l2.5-1a7.3 7.3 0 0 0 1.7 1l.4 2.6a.5.5 0 0 0 .5.4h4a.5.5 0 0 0 .5-.4l.4-2.6a7.3 7.3 0 0 0 1.7-1l2.5 1a.5.5 0 0 0 .6-.2l2-3.5a.5.5 0 0 0-.1-.6zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z',
   fullscreen: 'M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z',
   exitFullscreen: 'M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z',
@@ -672,6 +672,7 @@ function createPlayer(panel) {
   let hideTimer = null;
   let liveTimer = null;
   let pointerOnControls = false;
+  let lastTouchAt = 0;
   let controlsRevealedAt = 0;
   let seeking = false;
   let qualityChoice = -1;
@@ -700,9 +701,8 @@ function createPlayer(panel) {
   const listenedTracks = new WeakSet();
   const spinner = h('div', { class: 'overlay-spinner', hidden: true });
   const bigPlayButton = iconButton('play', 'Play', togglePlay, 'overlay-bigplay');
-  const playButton = iconButton('play', 'Play', togglePlay);
-  // What commercials are actually skipped with: a few taps forward. Ten back for the line
-  // that was missed doing it.
+  // Play and the two jumps are in the middle of the picture rather than the row: that is
+  // where a thumb lands, and the row has only so much space on a phone.
   const backButton = skipButton('back', -10, () => seekBy(-10));
   const forwardButton = skipButton('forward', 30, () => seekBy(30));
   const muteButton = iconButton('muted', 'Unmute', toggleMute);
@@ -754,12 +754,16 @@ function createPlayer(panel) {
   const recordButton = iconButton('record', 'Record this program', recordCurrentProgram, 'overlay-record');
   const fullscreenButton = iconButton('fullscreen', 'Full screen', toggleFullscreen);
 
+  // The centre of the picture is where a thumb lands. The same three controls as the row,
+  // big enough to hit without looking.
+  const centre = h('div', { class: 'overlay-centre' }, backButton, bigPlayButton, forwardButton);
+
   const wrap = h('div', { class: 'video-wrap', tabindex: '0' },
     video,
     captionLayer,
     spinner,
     status,
-    bigPlayButton,
+    centre,
     h('div', { class: 'overlay-top' },
       h('div', { class: 'overlay-info' }, channelLabel, programLabel, programProgress),
       liveButton,
@@ -767,7 +771,7 @@ function createPlayer(panel) {
     h('div', { class: 'overlay-bottom' },
       h('div', { class: 'overlay-seek' }, seekBar),
       h('div', { class: 'overlay-controls' },
-        backButton, playButton, forwardButton, stopButton, muteButton, volumeSlider, behindLabel,
+        stopButton, muteButton, volumeSlider, behindLabel,
         h('span', { class: 'overlay-spacer' }),
         settings,
         recordButton, fullscreenButton,
@@ -791,12 +795,28 @@ function createPlayer(panel) {
   video.textTracks.addEventListener('addtrack', applyCaptions);
   document.addEventListener('fullscreenchange', updateFullscreenState);
 
-  wrap.addEventListener('mousemove', showControls);
-  // A touch no longer reveals the controls by itself: the tap that follows decides, so
-  // that tapping while they are up puts them away instead of bringing them straight back.
-  wrap.addEventListener('touchstart', (event) => {
-    if (event.target !== video) showControls();
-  }, { passive: true });
+  // A touch reveals nothing by itself; the tap that follows decides, so tapping while the
+  // controls are up puts them away instead of bringing them straight back.
+  //
+  // A phone invents mouse events for a tap -- mouseover and mousemove arrive before the
+  // click, on Android as on iOS.
+  // Those were revealing the controls in the middle of the tap, which made the click land on
+  // a button that had been invisible when the finger went down: a tap over stop ended
+  // playback, and a tap on the picture revealed and then hid again, looking like nothing.
+  // So a mouse event just after a touch is ignored.
+  wrap.addEventListener('touchstart', () => { lastTouchAt = Date.now(); }, { passive: true });
+  wrap.addEventListener('mousemove', () => {
+    if (Date.now() - lastTouchAt > 700) showControls();
+  });
+  // Belt and braces for anything that still reveals mid-tap: a press that brought the
+  // controls up does not also work the control it landed on, because there was nothing
+  // there to press when the finger went down.
+  wrap.addEventListener('click', (event) => {
+    if (event.target !== video && Date.now() - controlsRevealedAt < 500) {
+      event.stopPropagation();
+      event.preventDefault();
+    }
+  }, true);
   wrap.addEventListener('focusin', showControls);
   wrap.addEventListener('keydown', onKey);
   document.addEventListener('click', (event) => {
@@ -859,8 +879,9 @@ function createPlayer(panel) {
 
   function updatePlayState() {
     const paused = video.paused;
-    setIcon(playButton, paused ? 'play' : 'pause', paused ? 'Play' : 'Pause');
-    bigPlayButton.hidden = !paused || (!session && !vod);
+    setIcon(bigPlayButton, paused ? 'play' : 'pause', paused ? 'Play' : 'Pause');
+    // Nothing to play yet means nothing to press.
+    centre.hidden = !session && !vod;
     showControls();
   }
 
@@ -1780,7 +1801,7 @@ function createPlayer(panel) {
     recordButton.hidden = false;
     panel.hidden = true;
     spinner.hidden = true;
-    bigPlayButton.hidden = true;
+    centre.hidden = true;
 
     if (ending) {
       try {

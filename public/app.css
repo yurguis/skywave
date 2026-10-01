@@ -316,6 +316,12 @@ button:disabled { opacity: .55; cursor: progress; }
 .video-wrap.controls-hidden .overlay-top,
 .video-wrap.controls-hidden .overlay-bottom { opacity: 0; pointer-events: none; }
 
+/* Above the middle of the picture: the menus open upwards from here and would otherwise be
+   covered by the play and jump buttons, which sit at z-index 3. On a phone in portrait the
+   picture is short enough that a menu reaches them, and the entries behind a button could
+   not be tapped at all. */
+.overlay-bottom { z-index: 4; }
+
 .overlay-info { min-width: 0; margin-right: auto; }
 .overlay-channel { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600; text-shadow: 0 1px 2px rgb(0 0 0 / .6); }
 /* Larger than in the guide, and with a shadow: it sits over the picture. */
@@ -489,18 +495,45 @@ button:disabled { opacity: .55; cursor: progress; }
 
 .video-wrap button.overlay-live.behind::before { background: rgb(255 255 255 / .5); }
 
-.video-wrap button.overlay-bigplay {
+/* Play and the two jumps, in the middle of the picture where a thumb lands. */
+.overlay-centre {
   position: absolute;
   left: 50%;
   top: 50%;
   z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  transform: translate(-50%, -50%);
+  transition: opacity .15s ease;
+}
+
+.video-wrap.controls-hidden .overlay-centre { opacity: 0; pointer-events: none; }
+
+/* Named through .overlay-centre so the narrow-screen rule that shrinks every icon button to
+   34px does not shrink these too -- it is as specific otherwise, and comes later. */
+.video-wrap .overlay-centre button.overlay-bigplay {
   width: 76px;
   height: 76px;
-  transform: translate(-50%, -50%);
   background: rgb(0 0 0 / .55);
 }
 
-.video-wrap button.overlay-bigplay svg { width: 42px; height: 42px; }
+.video-wrap .overlay-centre button.overlay-bigplay svg { width: 42px; height: 42px; }
+
+/* The jumps beside it are round rather than pill-shaped, with the number under the arrows. */
+.video-wrap .overlay-centre button.overlay-skip {
+  flex-direction: column;
+  justify-content: center;
+  gap: 0;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border-radius: 50%;
+  background: rgb(0 0 0 / .45);
+}
+
+.video-wrap .overlay-centre button.overlay-skip svg { width: 22px; height: 22px; }
+.video-wrap .overlay-centre button.overlay-skip span { margin-top: -2px; font-size: 10px; }
 
 .overlay-spinner {
   position: absolute;
@@ -539,6 +572,12 @@ button:disabled { opacity: .55; cursor: progress; }
   .overlay-volume, .overlay-next, .overlay-time { display: none; }
   .video-wrap button.overlay-icon { width: 34px; height: 34px; }
   .video-wrap button.overlay-skip { padding: 0 7px; }
+
+  .overlay-centre { gap: 14px; }
+  .video-wrap .overlay-centre button.overlay-bigplay { width: 60px; height: 60px; }
+  .video-wrap .overlay-centre button.overlay-bigplay svg { width: 32px; height: 32px; }
+  .video-wrap .overlay-centre button.overlay-skip { width: 48px; height: 48px; }
+  .video-wrap .overlay-centre button.overlay-skip svg { width: 20px; height: 20px; }
 
   /* The row cannot hold three named controls as well as the buttons, so they go behind the
      cog and come back as a column above it. Kept as a last resort: if something else is ever
