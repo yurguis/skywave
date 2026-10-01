@@ -3478,7 +3478,13 @@ function createRadioView(radio, player) {
   let listening = null;
   let station = null;
   let hintTimer = null;
-  let stations = loadRadioStations();
+  // The server keeps the stations when it has a database to keep them in, so every browser
+  // sees the same ones. When it has not, this browser keeps its own, as it used to.
+  const serverKeeps = Array.isArray(radio.stations);
+  let stations = serverKeeps ? radio.stations : loadRadioStations();
+  let scan = radio.scan ?? null;
+  let scanTimer = null;
+  let destroyed = false;
 
   const frequencyInput = h('input', {
     type: 'number',
@@ -3493,14 +3499,20 @@ function createRadioView(radio, player) {
   const programButtons = h('div', { class: 'radio-programs' });
   const stationButtons = h('div', { class: 'radio-stations' });
   const nowPlaying = h('div', { class: 'radio-now' });
+  const listenButton = h('button', { type: 'submit' }, 'Listen');
+  const scanButton = h('button', { type: 'button', class: 'secondary', onclick: onScan }, 'Scan');
+  const scanStatus = h('div', { class: 'radio-scan', hidden: true });
 
   const root = h('section', { class: 'radio card' },
     h('form', { class: 'radio-tune', onsubmit: onTune },
       frequencyInput,
       h('span', { class: 'muted' }, 'MHz'),
-      h('button', { type: 'submit' }, 'Listen'),
+      listenButton,
       programButtons,
+      h('span', { class: 'radio-spacer' }),
+      scanButton,
     ),
+    scanStatus,
     stationButtons,
     nowPlaying,
   );
@@ -3514,6 +3526,7 @@ function createRadioView(radio, player) {
   else if (remembered >= radio.band.from && remembered <= radio.band.to) frequencyInput.value = remembered.toFixed(1);
 
   render();
+  if (scan?.running) scheduleScanPoll();
 
   function onTune(event) {
     event.preventDefault();
@@ -3558,30 +3571,122 @@ function createRadioView(radio, player) {
     const known = stations.find((candidate) => candidate.frequency === frequency);
     if (known?.name === name) return;
 
+    // The server noted it when it told us the name; all that is left is to ask for the list.
+    if (serverKeeps) {
+      refreshStations();
+
+      return;
+    }
+
     stations = [...stations.filter((candidate) => candidate.frequency !== frequency), { frequency, name }]
       .sort((a, b) => a.frequency - b.frequency);
     saveSetting(RADIO_STATIONS_STORAGE_KEY, JSON.stringify(stations));
   }
 
-  function forget(frequency) {
+  async function forget(frequency) {
+    if (serverKeeps) {
+      try {
+        applyStations(await api(`/api/radio/stations/${frequency.toFixed(1)}`, { method: 'DELETE' }));
+      } catch (error) {
+        showError(error);
+      }
+
+      return;
+    }
+
     stations = stations.filter((candidate) => candidate.frequency !== frequency);
     saveSetting(RADIO_STATIONS_STORAGE_KEY, JSON.stringify(stations));
     render();
   }
 
+  async function refreshStations() {
+    try {
+      applyStations(await api('/api/radio/scan'));
+    } catch { /* the list on screen is still true, only older */ }
+  }
+
+  /** Take the stations and the scan's progress from any answer that carries them. */
+  function applyStations(body) {
+    if (serverKeeps && Array.isArray(body.stations)) stations = body.stations;
+    scan = body.scan ?? null;
+    render();
+  }
+
+  /**
+   * Look for stations up the whole dial, or stop looking. The scan needs the dongle to
+   * itself, so the server refuses while a station is playing and says so.
+   */
+  async function onScan() {
+    scanButton.disabled = true;
+
+    try {
+      // This browser's own station would only be refused for being in the way.
+      if (!scan?.running && listening !== null) await player.stop();
+
+      applyStations(await api('/api/radio/scan', { method: scan?.running ? 'DELETE' : 'POST' }));
+      scheduleScanPoll();
+    } catch (error) {
+      showError(error);
+    }
+
+    scanButton.disabled = false;
+  }
+
+  function scheduleScanPoll() {
+    clearTimeout(scanTimer);
+    if (destroyed || !scan?.running) return;
+
+    scanTimer = setTimeout(async () => {
+      await refreshStations();
+      scheduleScanPoll();
+    }, 2000);
+  }
+
+  function describeScan() {
+    if (scan === null) return null;
+
+    const found = scan.found?.length ?? 0;
+    const stationsFound = `${found} ${found === 1 ? 'station' : 'stations'} found`;
+
+    if (scan.running) {
+      return scan.frequency === null || scan.frequency === undefined
+        ? 'Starting the scan…'
+        : `Scanning ${Number(scan.frequency).toFixed(1)} FM · ${scan.done} of ${scan.total} tried · ${stationsFound}`;
+    }
+
+    if (scan.error) return `The scan stopped: ${scan.error}`;
+
+    return `${scan.stopped ? 'Scan stopped' : 'Scan finished'} · ${scan.done} of ${scan.total} tried · ${stationsFound}`;
+  }
+
   function render() {
+    const scanning = Boolean(scan?.running);
+    const scanText = describeScan();
+
+    // A scan has the dongle, so nothing can be listened to until it ends or is stopped.
+    listenButton.disabled = scanning;
+    scanButton.textContent = scanning ? 'Stop scan' : 'Scan';
+    scanButton.title = scanning ? 'Stop looking for stations' : 'Look for stations on every frequency; takes about ten minutes';
+    // The scan is only offered where its results can be kept.
+    scanButton.hidden = !serverKeeps;
+    scanStatus.hidden = scanText === null;
+    scanStatus.textContent = scanText ?? '';
+    scanStatus.classList.toggle('radio-error', Boolean(scan?.error) && !scanning);
+
     stationButtons.replaceChildren(...stations.map((saved) => h('span', { class: 'radio-station' },
       h('button', {
         type: 'button',
         class: 'secondary',
         'aria-pressed': String(listening?.frequency === saved.frequency),
+        disabled: scanning,
         onclick: () => listen(saved.frequency, 0),
-      }, h('b', {}, saved.frequency.toFixed(1)), ` ${saved.name}`),
+        // A station found before it gave its name is still a station; it is its frequency.
+      }, h('b', {}, saved.frequency.toFixed(1)), saved.name ? ` ${saved.name}` : ''),
       h('button', {
         type: 'button',
         class: 'secondary remove',
-        title: `Forget ${saved.name}`,
-        'aria-label': `Forget ${saved.name}`,
+        title: `Forget ${saved.name ?? saved.frequency.toFixed(1)}`,
+        'aria-label': `Forget ${saved.name ?? saved.frequency.toFixed(1)}`,
         onclick: () => forget(saved.frequency),
       }, '×'),
     )));
@@ -3648,6 +3753,9 @@ function createRadioView(radio, player) {
 
   function destroy() {
     clearTimeout(hintTimer);
+    clearTimeout(scanTimer);
+    scanTimer = null;
+    destroyed = true;
     listening = null;
   }
 

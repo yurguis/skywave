@@ -166,11 +166,12 @@ final class Receiver
      *
      * Audio goes to standard output as raw 16-bit stereo at 44.1 kHz, which is all nrsc5
      * ever produces, and everything it learns about the station goes to standard error.
-     * Pictures the station sends -- album covers, its logo -- are written to $directory.
+     * Pictures the station sends -- album covers, its logo -- are written to $directory,
+     * or not kept at all when there is none: a scan only wants to know who is there.
      *
      * @return string[]
      */
-    public function arguments(float $frequency, int $program, string $directory): array
+    public function arguments(float $frequency, int $program, ?string $directory): array
     {
         $binary = $this->binary();
 
@@ -195,9 +196,13 @@ final class Receiver
             array_push($arguments, '-p', (string) $this->ppm);
         }
 
+        array_push($arguments, '-o', '-', '-t', 'raw');
+
+        if ($directory !== null) {
+            array_push($arguments, '--dump-aas-files', $directory);
+        }
+
         return array_merge($arguments, [
-            '-o', '-', '-t', 'raw',
-            '--dump-aas-files', $directory,
             self::number(self::validateFrequency($frequency)),
             (string) self::validateProgram($program),
         ]);

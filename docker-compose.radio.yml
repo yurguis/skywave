@@ -37,6 +37,8 @@ services:
       # finds a gain by itself and assumes the dongle is accurate.
       RADIO_GAIN: ${RADIO_GAIN:-}
       RADIO_PPM: ${RADIO_PPM:-}
+      # Seconds a scan waits on each frequency before calling it empty; 6 when unset.
+      RADIO_SCAN_SECONDS: ${RADIO_SCAN_SECONDS:-}
     volumes:
       # Where the build wrote nrsc5 and its libraries. It must be readable by the
       # container's user, which a directory docker created for itself is not; see

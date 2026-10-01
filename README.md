@@ -373,6 +373,7 @@ It is off until it is told where the dongle is:
 | `RADIO_DEVICE` | A dongle plugged into this machine, counting from `0` |
 | `RADIO_GAIN` | Tuner gain in dB. Left empty, nrsc5 finds one itself each time a station starts |
 | `RADIO_PPM` | The dongle's frequency error in parts per million, for one that is off |
+| `RADIO_SCAN_SECONDS` | How long a scan waits on each frequency, 6 by default. Longer finds weaker stations; shorter gets through the empty ones faster |
 | `NRSC5` | Path to nrsc5, when it is not on `PATH` |
 
 ```bash
@@ -383,10 +384,22 @@ RADIO_DEVICE=0 PHP_CLI_SERVER_WORKERS=4 php -S 0.0.0.0:8080 -t public public/ind
 or on the host while Skywave runs in a container that cannot be given the USB device. It
 serves one listener at a time, and so does a dongle opened directly.
 
-Stations you have listened to are kept as buttons, in the browser that listened. There is
-no scan and no station list beyond that: nothing on the FM band announces what else is on
-it, so finding stations means trying frequencies. In North America they sit on the odd
-tenths (88.1, 90.5, 101.1).
+Nothing on the FM band announces what else is on it, so the only station list there can
+be is the one made by listening. A station is kept as a button once it has been played, in
+the guide's database, so every browser and phone sees the same ones; the × beside it
+forgets it.
+
+**Scan** finds them for you, the only way there is: by pointing nrsc5 at each frequency in
+turn and waiting to see whether it locks on. The dial is 101 frequencies (the odd tenths,
+87.9 to 107.9) and most are empty, each costing the whole wait, so a full scan takes about
+ten minutes. It runs in the background and can be stopped; what it has found by then is
+kept. It needs the dongle to itself, so nothing can be listened to while it runs, and it
+will not start while somebody else is listening. From a terminal:
+
+```bash
+php tools/radio-scan.php                         # the whole dial
+php tools/radio-scan.php --from=88.1 --to=92.1   # part of it
+```
 
 In Docker, see [HD Radio](#hd-radio-1) under Docker: nrsc5 is built separately.
 
@@ -602,8 +615,9 @@ anyone on the path.
   [AC-4 audio](#ac-4-audio).
 - **One station per dongle.** A dongle hears one frequency and nrsc5 plays one program of
   it, so everyone listening hears the same thing; asking for another station while somebody
-  else is listening is refused rather than changing theirs. Radio is not recorded, has no
-  guide, and its traffic and weather maps are not shown.
+  else is listening is refused rather than changing theirs, and a scan takes the dongle
+  from everyone until it ends. Radio is not recorded, has no guide, and its traffic and
+  weather maps are not shown.
 - **Nothing is ever deleted for you.** The Recordings tab warns when the drive runs low and
   refuses to start a recording below 2 GB free, but making room is yours to do.
 - **Every conversion runs on this machine.** HDHomeRun tuners do not transcode, so each

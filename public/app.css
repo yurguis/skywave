@@ -1138,6 +1138,9 @@ button.record.is-recording,
 .radio-tune input { width: 96px; font-variant-numeric: tabular-nums; }
 .radio-programs, .radio-stations { display: flex; flex-wrap: wrap; gap: 6px; }
 .radio-programs { margin-left: 8px; }
+.radio-spacer { flex: 1; }
+.radio-scan { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.radio-scan.radio-error { color: var(--red); }
 .radio button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 
 /* A station and the button that forgets it, joined so they read as one thing. */

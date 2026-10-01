@@ -92,6 +92,14 @@ final class Listener
     }
 
     /**
+     * One of nrsc5's reasons for stopping, said the way the page would say it.
+     */
+    public static function explain(string $reason): string
+    {
+        return self::EXPLANATIONS[$reason] ?? $reason;
+    }
+
+    /**
      * Listen until nrsc5 stops, whether because it was told to or because it could not go on.
      *
      * @return int the exit status: zero only when it was stopped rather than failed
@@ -226,7 +234,7 @@ final class Listener
      */
     private function fail(string $reason): int
     {
-        fwrite($this->report, (self::EXPLANATIONS[$reason] ?? $reason) . "\n");
+        fwrite($this->report, self::explain($reason) . "\n");
 
         return 1;
     }

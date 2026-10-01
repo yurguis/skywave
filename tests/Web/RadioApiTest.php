@@ -5,6 +5,8 @@ namespace Skywave\Tests\Web;
 use PHPUnit\Framework\TestCase;
 use Skywave\Hdhomerun\Discovery;
 use Skywave\Radio\Receiver;
+use Skywave\Radio\ScanJobs;
+use Skywave\Radio\StationStore;
 use Skywave\Web\Api;
 use Skywave\Web\LiveStreams;
 use Symfony\Component\HttpFoundation\Request;
@@ -27,13 +29,8 @@ class RadioApiTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach (glob($this->directory . '/{,.}*', GLOB_BRACE) ?: [] as $file) {
-            if (is_file($file)) {
-                unlink($file);
-            }
-        }
-
-        rmdir($this->directory);
+        // A session lock, a scan lock in its own folder, and a database with its journals.
+        exec('rm -rf ' . escapeshellarg($this->directory));
     }
 
     public function testAServerWithoutARadioSimplySaysSo(): void
@@ -90,6 +87,46 @@ class RadioApiTest extends TestCase
 
         // And nothing was started on the way to saying no.
         $this->assertSame([], glob($this->directory . '/*/session.json') ?: []);
+    }
+
+    public function testStationsAreListedOnceThereIsSomewhereToKeepThem(): void
+    {
+        // No database: null rather than empty, so the page knows to keep its own.
+        $this->assertNull($this->get($this->api(new Receiver(PHP_BINARY, null, 0)), '/api/radio')[1]['stations']);
+
+        $stations = new StationStore($this->directory . '/guide.sqlite');
+        $stations->save(90.5, 'KUT');
+
+        $api = new Api(new Discovery(), [], new LiveStreams($this->directory), null, null, null, null, null, null, null, null, new Receiver(PHP_BINARY, null, 0), $stations, new ScanJobs($this->directory . '/scan', '/nowhere/radio-scan.php'));
+
+        [, $radio] = $this->get($api, '/api/radio');
+
+        $this->assertSame('KUT', $radio['stations'][0]['name']);
+        $this->assertNull($radio['scan']);
+
+        $response = $api->handle(Request::create('/api/radio/stations/90.5', 'DELETE'));
+        $body     = json_decode((string) $response->getContent(), true);
+
+        $this->assertTrue($body['removed']);
+        $this->assertSame([], $body['stations']);
+
+    }
+
+    public function testAScanThatMakesNoSenseIsRefusedBeforeAnythingStarts(): void
+    {
+        $jobs = new ScanJobs($this->directory . '/scan', '/nowhere/radio-scan.php');
+        $api  = new Api(new Discovery(), [], new LiveStreams($this->directory), null, null, null, null, null, null, null, null, new Receiver(PHP_BINARY, null, 0), null, $jobs);
+
+        $scan = static fn (array $body) => $api->handle(Request::create('/api/radio/scan', 'POST', [], [], [], [], (string) json_encode($body)))->getStatusCode();
+
+        // Backwards, off the dial, and between two stations with none in the gap.
+        $this->assertSame(400, $scan(['from' => 100.1, 'to' => 90.1]));
+        $this->assertSame(400, $scan(['from' => 50, 'to' => 90.1]));
+        $this->assertSame(400, $scan(['from' => 90.2, 'to' => 90.2]));
+        $this->assertFalse($jobs->isRunning());
+
+        // And a server with no radio has no scan to speak of.
+        $this->assertSame(404, $this->api(null)->handle(Request::create('/api/radio/scan', 'GET'))->getStatusCode());
     }
 
     public function testOnlyAPictureTheStationSentCanBeServed(): void

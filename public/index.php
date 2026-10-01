@@ -28,6 +28,8 @@ use Skywave\Guide\GuideStore;
 use Skywave\Guide\ProgrammeArtwork;
 use Skywave\Hdhomerun\Discovery;
 use Skywave\Radio\Receiver;
+use Skywave\Radio\ScanJobs;
+use Skywave\Radio\StationStore;
 use Skywave\Web\Api;
 use Skywave\Web\LiveStreams;
 use Skywave\Web\Logs;
@@ -251,6 +253,15 @@ if (str_starts_with($path, '/api/')) {
         $radio = null;
     }
 
+    // Stations are kept in the guide's database. Without it the radio still plays; the
+    // page falls back to remembering stations in the browser.
+    try {
+        $stations = $radio === null ? null : StationStore::fromEnvironment();
+    } catch (Throwable $e) {
+        error_log('Radio stations will not be kept: ' . $e->getMessage());
+        $stations = null;
+    }
+
     (new Api(
         new Discovery(),
         $hosts,
@@ -263,7 +274,9 @@ if (str_starts_with($path, '/api/')) {
         $playback,
         Logs::fromEnvironment(),
         $guide !== null && $recordings !== null ? new SeriesRules($guide, $recordings) : null,
-        $radio
+        $radio,
+        $stations,
+        $radio === null ? null : ScanJobs::fromEnvironment()
     ))
         ->handle(Request::createFromGlobals())
         ->send();
