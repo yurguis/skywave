@@ -1485,11 +1485,32 @@ button.record.is-recording,
   .radio-stage { grid-template-columns: minmax(0, 1fr); }
 }
 
+/* Stacked on a phone, the card becomes a now-playing screen rather than a row, so it
+   composes on one centre line: artwork, who is on, what they are playing, the subchannels
+   and the transport. The side panels stay left aligned -- a form and a list are read down
+   an edge, not from the middle. */
 @media (max-width: 560px) {
-  .radio-now { grid-template-columns: minmax(0, 1fr); gap: var(--space-6); }
-  .radio-art { width: 100%; max-width: 240px; }
-  .radio-signal-box { margin-left: 0; width: 100%; }
-  .radio-volume { max-width: none; }
+  .radio-now {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-6);
+    justify-items: center;
+    text-align: center;
+  }
+
+  .radio-art { width: 100%; max-width: 268px; }
+  .radio-meta { justify-items: center; width: 100%; }
+  .radio-ident { justify-content: center; }
+  /* Titles here run long -- a phone number read out as a song title, a show and its hours.
+     Balanced so a centred second line does not come back as one orphaned word. */
+  .radio-title { text-wrap: balance; }
+  .radio-subs { justify-content: center; }
+
+  .radio-transport { justify-content: center; gap: var(--space-5); }
+  .radio-volume { flex: 1 1 100%; max-width: 280px; order: 3; }
+  .radio-signal-box { margin-left: 0; order: 4; flex: 1 1 100%; justify-content: center; }
+
+  .radio-diag { justify-self: center; }
+  .radio-diag > summary { margin-inline: auto; }
 }
 
 /* Touch targets.
