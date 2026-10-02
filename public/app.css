@@ -1236,6 +1236,7 @@ button.record.is-recording,
   align-items: start;
 }
 
+.radio-left { display: grid; gap: var(--space-7); align-content: start; min-width: 0; }
 .radio-main { display: grid; gap: var(--space-8); align-content: start; }
 
 .radio-now {

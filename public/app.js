@@ -3603,6 +3603,7 @@ function createRadioView(radio, player) {
 
   const root = h('section', { class: 'radio' },
     h('div', { class: 'radio-stage' },
+      h('div', { class: 'radio-left' },
       h('div', { class: 'radio-main card' },
         h('div', { class: 'radio-now' },
           artwork,
@@ -3610,6 +3611,8 @@ function createRadioView(radio, player) {
         ),
         transport,
         diagnostics,
+      ),
+      trafficBox,
       ),
       h('div', { class: 'radio-side' },
         h('div', { class: 'card radio-panel' },
@@ -3634,7 +3637,6 @@ function createRadioView(radio, player) {
         ),
       ),
     ),
-    trafficBox,
   );
 
   // Somebody may already be listening -- this browser before a reload, or another one.
@@ -3906,24 +3908,42 @@ function createRadioView(radio, player) {
       return;
     }
 
+    // Some stations put the subchannel in the slogan, which the pill below already says:
+    // WFEZ sends "HD1", Ritmo 95 sends "HD-1" and WRTO sends "WRTO-HD1", which is its own
+    // name with the same thing stuck on. None of the three tells you anything here.
+    const subLabel = `HD${listening.program + 1}`;
+    const saysNothing = [subLabel, station.station, `${station.station ?? ''}${subLabel}`]
+      .some((said) => sameWords(station.slogan, said));
+    const slogan = station.slogan && !saysNothing ? station.slogan : null;
+
     ident.replaceChildren(...[
       h('span', { class: 'radio-dial' }, listening.frequency.toFixed(1), h('i', {}, 'FM')),
       station.station && h('span', {}, station.station),
-      station.slogan && h('span', { class: 'muted' }, station.slogan),
+      slogan && h('span', { class: 'muted' }, slogan),
     ].filter(Boolean));
 
     title.textContent = station.title || station.station || dial;
     artist.textContent = station.artist ?? '';
     artist.hidden = !station.artist;
 
-    // A station that is between songs often sends its own name as the title, and sends it
-    // again as the message, so the same words would be on screen twice. Say each once.
-    const said = new Set([station.title, station.artist, station.station, station.slogan].filter(Boolean));
+    // With no song on, a station fills title, album and message with its own branding, and
+    // WFEZ sends all three: "EASY 93.1", "EASY HD1 93.1" and "EASY 93.1 80's, 90's, and
+    // More!". They are not equal, so matching on equality let all three through. One line
+    // that restates another is dropped, whichever of the two is longer.
+    const said = [station.title, station.artist, station.station, station.slogan].filter(Boolean);
+    const fresh = (text) => {
+      if (!text) return false;
+      if (said.some((seen) => echoes(seen, text))) return false;
+      said.push(text);
+
+      return true;
+    };
 
     extra.replaceChildren(...[
       station.alert && h('p', { class: 'radio-error' }, station.alert),
-      station.album && !said.has(station.album) && h('p', { class: 'muted' }, station.album),
-      station.message && !said.has(station.message) && h('p', { class: 'muted' }, station.message),
+      // An album with nobody playing it is the station's name in the album field.
+      station.artist && fresh(station.album) && h('p', { class: 'muted' }, station.album),
+      fresh(station.message) && h('p', { class: 'muted' }, station.message),
     ].filter(Boolean));
 
     renderDiagnostics();
@@ -3950,6 +3970,24 @@ function createRadioView(radio, player) {
       h('dl', { class: 'radio-diag-grid' }, ...rows.map(([term, value]) =>
         h('div', {}, h('dt', {}, term), h('dd', {}, value)))),
     );
+  }
+
+  /** The same words, give or take the punctuation and capitals a station varies. */
+  function sameWords(left, right) {
+    return plain(left) === plain(right);
+  }
+
+  /** Whether one line says what another already said -- either way round. */
+  function echoes(seen, candidate) {
+    const a = plain(seen);
+    const b = plain(candidate);
+    if (a === '' || b === '') return false;
+
+    return a.includes(b) || b.includes(a);
+  }
+
+  function plain(text) {
+    return String(text).toLowerCase().replace(/[^a-z0-9]+/g, '');
   }
 
   function renderTransport() {
