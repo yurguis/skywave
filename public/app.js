@@ -707,6 +707,8 @@ function createPlayer(panel) {
   let vod = null;
   // A radio station being listened to: sound only, and the station describes itself.
   let radio = null;
+  // A view that draws its own transport registers here; see onPlaybackChange.
+  let playbackListener = null;
   let hls = null;
   let timer = null;
   let current = null;
@@ -924,12 +926,39 @@ function createPlayer(panel) {
     else video.pause();
   }
 
+  /**
+   * Lets a view draw its own transport without owning the media element.
+   *
+   * The radio view puts play, pause and volume beside what is playing rather than over a
+   * picture that is not there, so it needs to hear what this element is doing. One listener
+   * is enough: only one view is on screen at a time.
+   */
+  function onPlaybackChange(listener) {
+    playbackListener = listener;
+  }
+
+  function playbackState() {
+    return {
+      paused: video.paused,
+      volume: video.muted ? 0 : video.volume,
+      waiting: !spinner.hidden,
+      status: status.hidden ? null : status.textContent,
+      failed: status.classList.contains('error'),
+    };
+  }
+
+  function setVolume(level) {
+    video.volume = Math.min(1, Math.max(0, level));
+    video.muted = video.volume === 0;
+  }
+
   function updatePlayState() {
     const paused = video.paused;
     setIcon(bigPlayButton, paused ? 'play' : 'pause', paused ? 'Play' : 'Pause');
     // Nothing to play yet means nothing to press.
     centre.hidden = !session && !vod;
     showControls();
+    playbackListener?.();
   }
 
   function toggleMute() {
@@ -943,6 +972,7 @@ function createPlayer(panel) {
   }
 
   function updateVolumeState() {
+    playbackListener?.();
     const silent = video.muted || video.volume === 0;
     setIcon(muteButton, silent ? 'muted' : 'volume', silent ? 'Unmute' : 'Mute');
     volumeSlider.value = String(silent ? 0 : video.volume);
@@ -1631,6 +1661,8 @@ function createPlayer(panel) {
     settings.hidden = true;
     fullscreenButton.hidden = true;
     wrap.classList.add('is-radio');
+    // The radio view draws the artwork and the transport itself, beside what is playing.
+    panel.classList.add('is-radio-panel');
     // Television starts muted because that is the only way a browser will start it
     // unasked. Nobody presses Listen to hear nothing, and the press is the asking.
     video.muted = false;
@@ -1943,6 +1975,7 @@ function createPlayer(panel) {
     settings.hidden = false;
     fullscreenButton.hidden = false;
     wrap.classList.remove('is-radio');
+    panel.classList.remove('is-radio-panel');
     artLayer.hidden = true;
     artLayer.removeAttribute('src');
     endingRadio?.onStation?.(null);
@@ -1969,7 +2002,11 @@ function createPlayer(panel) {
     if (session) navigator.sendBeacon(`/api/streams/${session.id}/leave?viewer=${VIEWER_ID}`);
   }
 
-  return { play, playFile, playAtsc3, playRadio, stop, leaveOnUnload, recordingsChanged: updateRecordButton };
+  return {
+    play, playFile, playAtsc3, playRadio, stop, leaveOnUnload,
+    recordingsChanged: updateRecordButton,
+    togglePlay, setVolume, onPlaybackChange, playbackState,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -3493,6 +3530,9 @@ function createRadioView(radio, player) {
   // in the Everglades and only reaches Miami at the widest extent.
   let trafficZoom = 2;
   let hintTimer = null;
+  // Removing a station is kept behind this rather than offered on every row, where the
+  // button sits under the thumb that meant to choose the station.
+  let editing = false;
   // The server keeps the stations when it has a database to keep them in, so every browser
   // sees the same ones. When it has not, this browser keeps its own, as it used to.
   const serverKeeps = Array.isArray(radio.stations);
@@ -3500,6 +3540,36 @@ function createRadioView(radio, player) {
   let scan = radio.scan ?? null;
   let scanTimer = null;
   let destroyed = false;
+
+  const artwork = h('div', { class: 'radio-art' });
+  const ident = h('p', { class: 'radio-ident' });
+  const title = h('h3', { class: 'radio-title' });
+  const artist = h('p', { class: 'radio-artist' });
+  const extra = h('div', { class: 'radio-extra' });
+  const programButtons = h('div', { class: 'radio-subs', role: 'group', 'aria-label': 'Subchannel' });
+
+  const playButton = h('button', {
+    type: 'button', class: 'radio-play', onclick: () => player.togglePlay(),
+  });
+  const stopButton = h('button', {
+    type: 'button', class: 'radio-icon', 'aria-label': 'Stop', title: 'Stop',
+    onclick: () => stopListening(),
+  }, icon('stop'));
+  const volumeSlider = h('input', {
+    type: 'range', min: '0', max: '1', step: '0.05', value: '1',
+    class: 'radio-volume-slider', 'aria-label': 'Volume',
+    oninput: () => player.setVolume(Number(volumeSlider.value)),
+  });
+  const volumeIcon = h('span', { class: 'radio-volume-icon' }, icon('volume'));
+  const signalBox = h('div', { class: 'radio-signal-box' });
+  const transport = h('div', { class: 'radio-transport' },
+    playButton,
+    stopButton,
+    h('div', { class: 'radio-volume' }, volumeIcon, volumeSlider),
+    signalBox,
+  );
+
+  const diagnostics = h('details', { class: 'radio-diag' });
 
   const frequencyInput = h('input', {
     type: 'number',
@@ -3509,27 +3579,62 @@ function createRadioView(radio, player) {
     step: '0.1',
     required: true,
     placeholder: '90.5',
+    class: 'radio-freq',
     'aria-label': 'Frequency in MHz',
   });
-  const programButtons = h('div', { class: 'radio-programs' });
+  const downButton = h('button', {
+    type: 'button', class: 'radio-step', 'aria-label': 'Down 0.2 MHz', onclick: () => nudge(-0.2),
+  }, '−');
+  const upButton = h('button', {
+    type: 'button', class: 'radio-step', 'aria-label': 'Up 0.2 MHz', onclick: () => nudge(0.2),
+  }, '+');
+  const listenButton = h('button', { type: 'submit', class: 'radio-listen' }, 'Listen');
+
+  const scanButton = h('button', { type: 'button', class: 'radio-linkish', onclick: onScan }, 'Scan');
+  const editButton = h('button', {
+    type: 'button', class: 'radio-linkish', 'aria-pressed': 'false',
+    onclick: () => { editing = !editing; render(); },
+  }, 'Edit');
+  const stationCount = h('span', { class: 'radio-count' });
   const stationButtons = h('div', { class: 'radio-stations' });
-  const nowPlaying = h('div', { class: 'radio-now' });
-  const listenButton = h('button', { type: 'submit' }, 'Listen');
-  const scanButton = h('button', { type: 'button', class: 'secondary', onclick: onScan }, 'Scan');
   const scanStatus = h('div', { class: 'radio-scan', hidden: true });
 
-  const root = h('section', { class: 'radio card' },
-    h('form', { class: 'radio-tune', onsubmit: onTune },
-      frequencyInput,
-      h('span', { class: 'muted' }, 'MHz'),
-      listenButton,
-      programButtons,
-      h('span', { class: 'radio-spacer' }),
-      scanButton,
+  const trafficBox = h('div', { class: 'radio-traffic-box' });
+
+  const root = h('section', { class: 'radio' },
+    h('div', { class: 'radio-stage' },
+      h('div', { class: 'radio-main card' },
+        h('div', { class: 'radio-now' },
+          artwork,
+          h('div', { class: 'radio-meta' }, ident, title, artist, extra, programButtons),
+        ),
+        transport,
+        diagnostics,
+      ),
+      h('div', { class: 'radio-side' },
+        h('div', { class: 'card radio-panel' },
+          h('div', { class: 'radio-panel-head' }, h('h4', {}, 'Tune')),
+          h('form', { class: 'radio-tune', onsubmit: onTune },
+            downButton,
+            h('div', { class: 'radio-freq-field' },
+              frequencyInput,
+              h('span', { class: 'muted' }, `MHz · ${radio.band.from.toFixed(1)}–${radio.band.to.toFixed(1)}`),
+            ),
+            upButton,
+            listenButton,
+          ),
+        ),
+        h('div', { class: 'card radio-panel' },
+          h('div', { class: 'radio-panel-head' },
+            h('h4', {}, 'Stations', stationCount),
+            h('div', { class: 'radio-panel-actions' }, scanButton, editButton),
+          ),
+          scanStatus,
+          stationButtons,
+        ),
+      ),
     ),
-    scanStatus,
-    stationButtons,
-    nowPlaying,
+    trafficBox,
   );
 
   // Somebody may already be listening -- this browser before a reload, or another one.
@@ -3540,8 +3645,18 @@ function createRadioView(radio, player) {
   if (playing) frequencyInput.value = Number(playing.frequency).toFixed(1);
   else if (remembered >= radio.band.from && remembered <= radio.band.to) frequencyInput.value = remembered.toFixed(1);
 
+  // The transport is ours but the media element is the player's, so it tells us what it did.
+  player.onPlaybackChange(() => renderTransport());
+
   render();
   if (scan?.running) scheduleScanPoll();
+
+  function nudge(by) {
+    const from = Number(frequencyInput.value) || radio.band.from;
+    const next = Math.min(radio.band.to, Math.max(radio.band.from, Math.round((from + by) * 10) / 10));
+
+    frequencyInput.value = next.toFixed(1);
+  }
 
   function onTune(event) {
     event.preventDefault();
@@ -3550,6 +3665,13 @@ function createRadioView(radio, player) {
     if (!Number.isFinite(frequency)) return;
 
     listen(frequency, 0);
+  }
+
+  async function stopListening() {
+    await player.stop();
+    listening = null;
+    station = null;
+    render();
   }
 
   function listen(frequency, program) {
@@ -3598,7 +3720,10 @@ function createRadioView(radio, player) {
     saveSetting(RADIO_STATIONS_STORAGE_KEY, JSON.stringify(stations));
   }
 
-  async function forget(frequency) {
+  async function forget(frequency, name) {
+    const label = name ? `${frequency.toFixed(1)} ${name}` : frequency.toFixed(1);
+    if (!confirm(`Remove ${label} from your stations?`)) return;
+
     if (serverKeeps) {
       try {
         applyStations(await api(`/api/radio/stations/${frequency.toFixed(1)}`, { method: 'DELETE' }));
@@ -3680,6 +3805,8 @@ function createRadioView(radio, player) {
 
     // A scan has the dongle, so nothing can be listened to until it ends or is stopped.
     listenButton.disabled = scanning;
+    upButton.disabled = scanning;
+    downButton.disabled = scanning;
     scanButton.textContent = scanning ? 'Stop scan' : 'Scan';
     scanButton.title = scanning ? 'Stop looking for stations' : 'Look for stations on every frequency; takes about ten minutes';
     // The scan is only offered where its results can be kept.
@@ -3688,23 +3815,37 @@ function createRadioView(radio, player) {
     scanStatus.textContent = scanText ?? '';
     scanStatus.classList.toggle('radio-error', Boolean(scan?.error) && !scanning);
 
-    stationButtons.replaceChildren(...stations.map((saved) => h('span', { class: 'radio-station' },
-      h('button', {
-        type: 'button',
-        class: 'secondary',
-        'aria-pressed': String(listening?.frequency === saved.frequency),
-        disabled: scanning,
-        onclick: () => listen(saved.frequency, 0),
-        // A station found before it gave its name is still a station; it is its frequency.
-      }, h('b', {}, saved.frequency.toFixed(1)), saved.name ? ` ${saved.name}` : ''),
-      h('button', {
-        type: 'button',
-        class: 'secondary remove',
-        title: `Forget ${saved.name ?? saved.frequency.toFixed(1)}`,
-        'aria-label': `Forget ${saved.name ?? saved.frequency.toFixed(1)}`,
-        onclick: () => forget(saved.frequency),
-      }, '×'),
-    )));
+    editButton.hidden = stations.length === 0;
+    editButton.textContent = editing ? 'Done' : 'Edit';
+    editButton.setAttribute('aria-pressed', String(editing));
+    stationCount.textContent = stations.length ? ` · ${stations.length}` : '';
+    stationButtons.classList.toggle('is-editing', editing);
+
+    stationButtons.replaceChildren(...stations.map((saved) => {
+      const chosen = listening?.frequency === saved.frequency;
+
+      return h('div', { class: 'radio-station', 'aria-current': String(chosen) },
+        h('button', {
+          type: 'button',
+          class: 'radio-station-pick',
+          disabled: scanning || editing,
+          onclick: () => listen(saved.frequency, 0),
+          // A station found before it gave its name is still a station; it is its frequency.
+        },
+          h('b', {}, saved.frequency.toFixed(1)),
+          h('span', { class: 'radio-station-name' }, saved.name ?? ''),
+          chosen && h('span', { class: 'radio-bars', 'aria-hidden': 'true' },
+            h('i', {}), h('i', {}), h('i', {})),
+        ),
+        editing && h('button', {
+          type: 'button',
+          class: 'radio-remove',
+          title: `Forget ${saved.name ?? saved.frequency.toFixed(1)}`,
+          'aria-label': `Forget ${saved.name ?? saved.frequency.toFixed(1)}`,
+          onclick: () => forget(saved.frequency, saved.name),
+        }, '×'),
+      );
+    }));
     stationButtons.hidden = stations.length === 0;
 
     // HD1 is always there; the rest are offered once the station has said it has them.
@@ -3716,7 +3857,7 @@ function createRadioView(radio, player) {
 
       return h('button', {
         type: 'button',
-        class: 'secondary',
+        class: 'radio-sub',
         title: [details?.name, details?.type].filter(Boolean).join(' · ') || null,
         'aria-pressed': String(listening?.program === number),
         onclick: () => listen(listening.frequency, number),
@@ -3724,59 +3865,119 @@ function createRadioView(radio, player) {
     }));
     programButtons.hidden = listening === null;
 
-    nowPlaying.replaceChildren(...describe().filter(Boolean));
+    renderNowPlaying();
+    renderTransport();
+    trafficBox.replaceChildren(...[trafficMap(station)].filter(Boolean));
   }
 
-  function describe() {
+  /** The artwork, who is on and what they are playing -- the reason the view exists. */
+  function renderNowPlaying() {
+    const picture = station?.art ?? station?.logo ?? null;
+
+    artwork.replaceChildren(picture
+      ? h('img', { src: picture, alt: station?.station ? `${station.station} artwork` : 'Station artwork' })
+      : h('span', { class: 'radio-art-empty', 'aria-hidden': 'true' },
+        listening ? listening.frequency.toFixed(1) : '●'));
+    artwork.classList.toggle('is-empty', picture === null);
+
     if (listening === null) {
-      return [
-        playing && h('p', {}, `The radio is on ${playing.station ? `${playing.station}, ` : ''}${Number(playing.frequency).toFixed(1)} FM HD${playing.program + 1}.`),
-        h('p', { class: 'muted' }, 'Enter a frequency to listen. HD Radio stations in North America sit on the odd tenths: 88.1, 90.5, 101.1.'),
-      ];
+      ident.textContent = playing
+        ? `${playing.station ? `${playing.station} · ` : ''}${Number(playing.frequency).toFixed(1)} FM is on`
+        : 'Nothing playing';
+      title.textContent = playing ? 'Pick a station, or tune one' : 'Pick a station';
+      artist.textContent = '';
+      extra.replaceChildren(h('p', { class: 'muted' },
+        'HD Radio stations in North America sit on the odd tenths: 88.1, 90.5, 101.1.'));
+
+      return;
     }
 
     const dial = `${listening.frequency.toFixed(1)} FM`;
 
     if (!station?.synchronized) {
-      return [
-        h('p', {}, `Looking for HD Radio on ${dial}…`),
+      ident.textContent = dial;
+      title.textContent = 'Looking for HD Radio…';
+      artist.textContent = '';
+      extra.replaceChildren(...[
         Date.now() - listening.since >= 20000 && h('p', { class: 'muted' },
           'Nothing digital yet. Not every station broadcasts HD Radio, and one that does needs a stronger signal than its analogue sound.'),
-      ];
+      ].filter(Boolean));
+
+      return;
     }
 
-    // Every HD Radio station is HDC, so naming it says nothing on its own; the mode beside
-    // it is the part that differs between stations and between a station's own programs.
+    ident.replaceChildren(...[
+      h('span', { class: 'radio-dial' }, listening.frequency.toFixed(1), h('i', {}, 'FM')),
+      station.station && h('span', {}, station.station),
+      station.slogan && h('span', { class: 'muted' }, station.slogan),
+    ].filter(Boolean));
+
+    title.textContent = station.title || station.station || dial;
+    artist.textContent = station.artist ?? '';
+    artist.hidden = !station.artist;
+
+    // A station that is between songs often sends its own name as the title, and sends it
+    // again as the message, so the same words would be on screen twice. Say each once.
+    const said = new Set([station.title, station.artist, station.station, station.slogan].filter(Boolean));
+
+    extra.replaceChildren(...[
+      station.alert && h('p', { class: 'radio-error' }, station.alert),
+      station.album && !said.has(station.album) && h('p', { class: 'muted' }, station.album),
+      station.message && !said.has(station.message) && h('p', { class: 'muted' }, station.message),
+    ].filter(Boolean));
+
+    renderDiagnostics();
+  }
+
+  /** Signal stays in sight because it says whether this will hold; the rest folds away. */
+  function renderDiagnostics() {
     const codec = station.codecMode === null || station.codecMode === undefined
       ? null
       : `HDC mode ${station.codecMode}`;
 
-    const rest = [
-      codec,
-      station.bitrate && `${Math.round(station.bitrate)} kbps`,
-      station.gain !== null && station.gain !== undefined && `Gain ${station.gain.toFixed(1)} dB`,
-    ].filter(Boolean).join(' · ');
+    const rows = [
+      codec && ['Codec', codec],
+      station.bitrate && ['Bitrate', `${Math.round(station.bitrate)} kbps`],
+      station.gain !== null && station.gain !== undefined && ['Gain', `${station.gain.toFixed(1)} dB`],
+      station.genre && ['Genre', station.genre],
+    ].filter(Boolean);
 
-    const hasSignal = station.mer !== null && station.mer !== undefined;
-    const signal = (hasSignal || rest) && h('p', { class: 'muted radio-signal' },
+    diagnostics.hidden = rows.length === 0;
+    if (rows.length === 0) return;
+
+    diagnostics.replaceChildren(
+      h('summary', {}, h('span', { class: 'radio-diag-mark', 'aria-hidden': 'true' }, '\u203a'), 'Reception detail'),
+      h('dl', { class: 'radio-diag-grid' }, ...rows.map(([term, value]) =>
+        h('div', {}, h('dt', {}, term), h('dd', {}, value)))),
+    );
+  }
+
+  function renderTransport() {
+    const state = player.playbackState();
+    const live = listening !== null;
+
+    transport.hidden = !live;
+    if (!live) {
+      signalBox.replaceChildren();
+
+      return;
+    }
+
+    playButton.replaceChildren(icon(state.paused ? 'play' : 'pause'));
+    playButton.setAttribute('aria-label', state.paused ? 'Play' : 'Pause');
+    playButton.title = state.paused ? 'Play' : 'Pause';
+
+    volumeIcon.replaceChildren(icon(state.volume === 0 ? 'muted' : 'volume'));
+    volumeSlider.value = String(state.volume);
+    volumeSlider.style.setProperty('--level', String(state.volume));
+
+    const hasSignal = station?.mer !== null && station?.mer !== undefined;
+
+    signalBox.replaceChildren(...[
       hasSignal && signalMeter(station.mer),
-      hasSignal && h('span', {}, `Signal ${station.mer.toFixed(1)} dB`),
-      rest && h('span', {}, (hasSignal ? ' · ' : '') + rest));
-
-    return [
-      h('h4', {}, station.station ?? dial),
-      station.slogan && h('p', { class: 'muted' }, station.slogan),
-      station.alert && h('p', { class: 'radio-error' }, station.alert),
-      (station.title || station.artist) && h('dl', { class: 'kv' },
-        station.title && [h('dt', {}, 'Title'), h('dd', {}, station.title)],
-        station.artist && [h('dt', {}, 'Artist'), h('dd', {}, station.artist)],
-        station.album && [h('dt', {}, 'Album'), h('dd', {}, station.album)],
-        station.genre && [h('dt', {}, 'Genre'), h('dd', {}, station.genre)],
-      ),
-      station.message && h('p', { class: 'muted' }, station.message),
-      signal,
-      trafficMap(station),
-    ];
+      hasSignal && h('span', { class: 'radio-signal' }, `Signal ${station.mer.toFixed(1)} dB`),
+      !hasSignal && state.status && h('span', { class: state.failed ? 'radio-error' : 'muted' }, state.status),
+    ].filter(Boolean));
   }
 
   /**
@@ -3788,7 +3989,7 @@ function createRadioView(radio, player) {
    * choose between them and the choice sticks while the station is on.
    */
   function trafficMap(station) {
-    const maps = station.traffic ?? [];
+    const maps = station?.traffic ?? [];
 
     if (maps.length === 0) return null;
 
@@ -3801,7 +4002,7 @@ function createRadioView(radio, player) {
       alt: `Traffic around ${chosen.north.toFixed(2)}, ${chosen.west.toFixed(2)}`,
     });
 
-    return h('div', { class: 'traffic' },
+    return h('div', { class: 'traffic card' },
       h('div', { class: 'traffic-head' },
         h('span', {}, 'Traffic'),
         h('span', { class: 'muted' }, `drawn ${clockFromEpoch(chosen.at)}`),
@@ -3845,6 +4046,7 @@ function createRadioView(radio, player) {
     scanTimer = null;
     destroyed = true;
     listening = null;
+    player.onPlaybackChange(null);
   }
 
   return { root, destroy };
