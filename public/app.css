@@ -268,7 +268,12 @@ button:disabled { opacity: .55; cursor: progress; }
 }
 
 .programs button.program:hover:not(:disabled) { background: var(--surface-2); border-color: var(--border); }
-.programs button.program:hover:not(:disabled)::after { content: "Watch"; margin-left: auto; font-size: 11px; color: var(--accent); }
+/* Pointer only. A touch device cannot hover, so this label never appeared there -- and a tap
+   would have left it stuck on. The play marker beside the title is the affordance on touch,
+   and that one is always visible. */
+@media (hover: hover) {
+  .programs button.program:hover:not(:disabled)::after { content: "Watch"; margin-left: auto; font-size: 11px; color: var(--accent); }
+}
 .tuner .hint { margin: 0; font-size: 12.5px; }
 .controls button.watch { background: var(--green); border-color: var(--green); }
 .programs button.program:disabled { opacity: 1; cursor: default; color: var(--muted); }
@@ -1211,3 +1216,57 @@ button.record.is-recording,
 .radio-now p { margin: 0; }
 .radio-signal { font-variant-numeric: tabular-nums; }
 .radio-error { margin: 0; color: var(--red); }
+
+/* Touch targets.
+   Scoped to a coarse pointer rather than a narrow width: a tablet is touched but is wider
+   than any breakpoint here, and 43 of these buttons measured under the 44px minimum at
+   768px. A narrow desktop window keeps the denser mouse sizing it had. */
+@media (pointer: coarse) {
+  button,
+  select,
+  input,
+  [role="button"] { min-height: 44px; }
+
+  /* The player's overlay is the exception. Its buttons are deliberately 34, 48 and 60px
+     when the screen is small, and min-height wins over height whatever the source order,
+     so it is taken back off again here rather than listing every control above. */
+  .video-wrap button,
+  .video-wrap input { min-height: 0; }
+
+  /* Full width as well as full height: the press should land anywhere in the column
+     heading, not only on the label, which was 40px wide inside a wider cell. */
+  .list-table th .sort { width: 100%; }
+
+  /* Several of these hold one glyph and came out 33px wide -- the guide's time arrows,
+     which are how the schedule is moved on a phone, and the close button on the details
+     panel. Width is not given to the sort control above, which would widen its column. */
+  button.secondary { min-width: 44px; }
+
+  /* The checkbox itself stays the size the platform draws it. The label already toggles
+     it, so the label is what gets the target. */
+  .log-follow { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; }
+}
+
+/* Two round controls, 22px and 18px, that cannot simply be made bigger: the channel link
+   has to stay 18px or it makes the rows that have an application taller than the rows that
+   do not. So the target grows without the element growing -- a centred transparent box,
+   44px square, that takes the press. This is also what gives them their width on a touch
+   screen, where the rule above only reaches their height. Neither has an interactive
+   neighbour to take a press from.
+
+   The channel link ends up with about 40px of this reachable rather than the full 44: it
+   sits near the top of a cell whose overflow is hidden, which the channel name needs for
+   its ellipsis, so the last few pixels upwards are clipped. */
+.guide-empty-play,
+.channel-app { position: relative; }
+
+.guide-empty-play::after,
+.channel-app::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
