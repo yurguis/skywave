@@ -59,6 +59,68 @@ class StationStateTest extends TestCase
         ], $state->toArray()['programs']);
     }
 
+    public function testTheCodecModeIsTheOneThisProgramIsCodedWith(): void
+    {
+        // Every HD Radio station is HDC; the mode is what differs, and a station's own
+        // programs need not share it. Only the one being listened to counts.
+        $state = $this->heard([
+            '14:31:19 Audio service 0: public, type: None, codec: 0, blend: 2, gain: 0 dB, delay: 96, latency: 8',
+            '14:31:19 Audio service 1: public, type: Public, codec: 3, blend: 0, gain: 0 dB, delay: 0, latency: 8',
+        ], 1);
+
+        $this->assertSame(3, $state->toArray()['codecMode']);
+    }
+
+    public function testWithNothingHeardThereIsNoCodecMode(): void
+    {
+        $this->assertNull($this->heard([])->toArray()['codecMode']);
+    }
+
+    public function testTheTrafficMapsAStationDrawsAreKept(): void
+    {
+        // Lines as nrsc5 really prints them, from 93.1 WFEZ.
+        $state = $this->heard([
+            '19:59:54 HERE Image: type=TRAFFIC, seq=6, n1=1, n2=9, time=2026-10-02T19:57:48Z, lat1=26.02840, lon1=-80.58471, lat2=25.78134, lon2=-80.31005, name=trafficMap_0_0_znz1.png, size=2064',
+            '20:00:47 HERE Image: type=TRAFFIC, seq=6, n1=4, n2=9, time=2026-10-02T19:57:48Z, lat1=26.27494, lon1=-80.58471, lat2=25.53376, lon2=-80.31005, name=trafficMap_1_0_znz1.png, size=566',
+            '20:01:09 HERE Image: type=TRAFFIC, seq=6, n1=5, n2=9, time=2026-10-02T19:57:48Z, lat1=26.27494, lon1=-80.85937, lat2=25.53376, lon2=-80.03540, name=trafficMap_1_1_znz1.png, size=5421',
+        ]);
+
+        $maps = $state->toArray()['traffic'];
+
+        // The stretched one, 1_0, is not offered: only the square extents are.
+        $this->assertCount(2, $maps);
+        $this->assertSame([0, 1], array_column($maps, 'zoom'));
+
+        // Named by the time it was made, which is how nrsc5 wrote it to disk.
+        $this->assertSame('1790971068_trafficMap_0_0_znz1.png', $maps[0]['file']);
+        $this->assertSame(26.02840, $maps[0]['north']);
+        $this->assertSame(-80.31005, $maps[0]['east']);
+    }
+
+    public function testANewerTrafficMapReplacesTheOneItRedraws(): void
+    {
+        $state = $this->heard([
+            '19:59:54 HERE Image: type=TRAFFIC, seq=6, n1=1, n2=9, time=2026-10-02T19:57:48Z, lat1=26.02840, lon1=-80.58471, lat2=25.78134, lon2=-80.31005, name=trafficMap_0_0_znz1.png, size=2064',
+            '20:04:54 HERE Image: type=TRAFFIC, seq=7, n1=1, n2=9, time=2026-10-02T20:03:48Z, lat1=26.02840, lon1=-80.58471, lat2=25.78134, lon2=-80.31005, name=trafficMap_0_0_znz1.png, size=2100',
+        ]);
+
+        $maps = $state->toArray()['traffic'];
+
+        $this->assertCount(1, $maps);
+        $this->assertSame('1790971428_trafficMap_0_0_znz1.png', $maps[0]['file'], 'the later one');
+    }
+
+    public function testTheWeatherSheetIsNotOfferedAsATrafficMap(): void
+    {
+        // It is a transparent overlay of rain and needs a map beneath it, which traffic
+        // does not. Kept out until there is somewhere to put it.
+        $state = $this->heard([
+            '19:59:46 HERE Image: type=WEATHER, seq=3, n1=7038, n2=7038, time=2026-10-02T19:57:50Z, lat1=26.35770, lon1=-80.85939, lat2=25.53380, lon2=-80.03540, name=WeatherImage_0_0_znz1.png, size=3009',
+        ]);
+
+        $this->assertSame([], $state->toArray()['traffic']);
+    }
+
     public function testOnlyAChangeIsWorthTelling(): void
     {
         $state = new StationState();
@@ -103,8 +165,9 @@ class StationStateTest extends TestCase
 
         // Sent, but no song has asked for it yet.
         $this->assertNull($state->toArray()['art']);
-        // A name with characters outside the plain ones is not served, whoever sent it.
-        $this->assertNull($state->toArray()['logo']);
+        // The logo arrives named for the call sign and the program, dollars and all. That is
+        // what stations send -- WRTO sends SLWRTO$$010003META.png -- so it is kept.
+        $this->assertSame('7_SLKUT$$010001.png', $state->toArray()['logo']);
         $this->assertSame('MPS', $state->toArray()['programs'][0]['name']);
 
         $state->apply('14:31:31 XHDR: 0 BE4B7536 4242');
@@ -139,6 +202,20 @@ class StationStateTest extends TestCase
         ]);
 
         $this->assertNull($state->toArray()['logo']);
+    }
+
+    public function testANameThatIsAPathIsStillRefused(): void
+    {
+        // What the list of allowed characters is actually for. Letting the dollar through
+        // does not let any of this through: the picture is served to a browser out of the
+        // session's own directory, and a name that climbs out of it is not a name.
+        foreach (['../../etc/passwd.png', '/etc/shadow.png', 'a/b.png', '..\\windows.png', '.hidden.png'] as $name) {
+            $state = $this->heard([
+                "14:31:25 LOT file: port=0811 lot=7 name=$name size=5021 mime=D9C72536 expiry=2026-10-02T00:00:00Z",
+            ]);
+
+            $this->assertNull($state->toArray()['logo'], $name);
+        }
     }
 
     /**

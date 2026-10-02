@@ -1342,8 +1342,13 @@ function createPlayer(panel) {
     if (wrap.classList.contains('controls-hidden')) controlsRevealedAt = Date.now();
     wrap.classList.remove('controls-hidden');
     clearTimeout(hideTimer);
-    // With no picture to get out of the way of, radio keeps its controls up.
-    if (!radio && !video.paused && !pointerOnControls && qualityMenu.hidden) hideTimer = setTimeout(() => wrap.classList.add('controls-hidden'), 3000);
+    // Radio has nothing but the picture its station sends, so the controls get out of the
+    // way once there is one and stay up when there is not: fading them over a black square
+    // would leave the viewer with nothing at all to look at, and no hint there is anything
+    // to press. A tap or the mouse brings them back either way.
+    const worthClearing = !radio || !artLayer.hidden;
+
+    if (worthClearing && !video.paused && !pointerOnControls && qualityMenu.hidden) hideTimer = setTimeout(() => wrap.classList.add('controls-hidden'), 3000);
   }
 
   /** Send the controls away now, rather than waiting for them to fade. */
@@ -1669,7 +1674,13 @@ function createPlayer(panel) {
     } else {
       // Only when it changes: setting the same address again makes the picture blink.
       if (artLayer.getAttribute('src') !== picture) artLayer.src = picture;
+
+      const appeared = artLayer.hidden;
       artLayer.hidden = false;
+
+      // The picture arrives a minute into a station, long after the controls last had a
+      // reason to count down. Start them going now there is something behind them.
+      if (appeared) showControls();
     }
 
     radio?.onStation?.(station);
@@ -3477,6 +3488,10 @@ function createRadioView(radio, player) {
   // station that was switched away from keeps reporting until it has stopped.
   let listening = null;
   let station = null;
+  // Which traffic map is on show. The widest, because a station centres its maps on its
+  // market rather than on the city: WFEZ draws from 25.90, -80.45, which puts the close view
+  // in the Everglades and only reaches Miami at the widest extent.
+  let trafficZoom = 2;
   let hintTimer = null;
   // The server keeps the stations when it has a database to keep them in, so every browser
   // sees the same ones. When it has not, this browser keeps its own, as it used to.
@@ -3730,11 +3745,23 @@ function createRadioView(radio, player) {
       ];
     }
 
-    const signal = [
-      station.mer !== null && station.mer !== undefined && `Signal ${station.mer.toFixed(1)} dB`,
+    // Every HD Radio station is HDC, so naming it says nothing on its own; the mode beside
+    // it is the part that differs between stations and between a station's own programs.
+    const codec = station.codecMode === null || station.codecMode === undefined
+      ? null
+      : `HDC mode ${station.codecMode}`;
+
+    const rest = [
+      codec,
       station.bitrate && `${Math.round(station.bitrate)} kbps`,
       station.gain !== null && station.gain !== undefined && `Gain ${station.gain.toFixed(1)} dB`,
     ].filter(Boolean).join(' · ');
+
+    const hasSignal = station.mer !== null && station.mer !== undefined;
+    const signal = (hasSignal || rest) && h('p', { class: 'muted radio-signal' },
+      hasSignal && signalMeter(station.mer),
+      hasSignal && h('span', {}, `Signal ${station.mer.toFixed(1)} dB`),
+      rest && h('span', {}, (hasSignal ? ' · ' : '') + rest));
 
     return [
       h('h4', {}, station.station ?? dial),
@@ -3747,8 +3774,69 @@ function createRadioView(radio, player) {
         station.genre && [h('dt', {}, 'Genre'), h('dd', {}, station.genre)],
       ),
       station.message && h('p', { class: 'muted' }, station.message),
-      signal && h('p', { class: 'muted radio-signal' }, signal),
+      signal,
+      trafficMap(station),
     ];
+  }
+
+  /**
+   * The traffic map a station draws, when it draws one.
+   *
+   * Only some stations carry it, so this is nothing at all on most of them. The picture is
+   * already a map -- streets, names and the roads coloured by how they are moving -- so it
+   * is shown as it arrived. Three of them come, the same place at three extents; the buttons
+   * choose between them and the choice sticks while the station is on.
+   */
+  function trafficMap(station) {
+    const maps = station.traffic ?? [];
+
+    if (maps.length === 0) return null;
+
+    const chosen = maps.find((m) => m.zoom === trafficZoom) ?? maps[maps.length - 1];
+    const names = { 0: 'Close', 1: 'City', 2: 'Wide' };
+
+    const picture = h('img', {
+      class: 'traffic-map',
+      src: chosen.url,
+      alt: `Traffic around ${chosen.north.toFixed(2)}, ${chosen.west.toFixed(2)}`,
+    });
+
+    return h('div', { class: 'traffic' },
+      h('div', { class: 'traffic-head' },
+        h('span', {}, 'Traffic'),
+        h('span', { class: 'muted' }, `drawn ${clockFromEpoch(chosen.at)}`),
+        h('span', { class: 'traffic-zooms' }, ...maps.map((m) => h('button', {
+          type: 'button',
+          class: m.zoom === chosen.zoom ? 'secondary is-on' : 'secondary',
+          onclick: () => { trafficZoom = m.zoom; render(); },
+        }, names[m.zoom] ?? String(m.zoom)))),
+      ),
+      picture);
+  }
+
+  function clockFromEpoch(seconds) {
+    return timeFormat.format(seconds * 1000);
+  }
+
+  /**
+   * How good that number is, for anyone who does not know what a good MER is.
+   *
+   * The bands come from listening here rather than from a standard: 98.3 at 10 dB never
+   * faltered, 94.9 at 4.8 dB held but sat near the edge, 92.3 at 2.6 dB broke up, and a
+   * station at 89.7 never locked at all. So four bars and up is comfortable, three is
+   * workable, and below that expect it to drop out.
+   */
+  function signalMeter(mer) {
+    const bars = mer >= 12 ? 5 : mer >= 9 ? 4 : mer >= 6 ? 3 : mer >= 4 ? 2 : 1;
+    const tone = bars >= 4 ? 'green' : bars === 3 ? 'yellow' : 'red';
+    const word = bars >= 4 ? 'strong' : bars === 3 ? 'workable' : bars === 2 ? 'weak' : 'barely there';
+
+    return h('span', {
+      class: `signal-meter ${tone}`,
+      role: 'img',
+      title: `Signal ${word}: ${mer.toFixed(1)} dB. Four bars and up plays without dropping out.`,
+      'aria-label': `Signal ${word}, ${mer.toFixed(1)} decibels`,
+    }, ...[1, 2, 3, 4, 5].map((step) => h('i', { class: step <= bars ? 'on' : '' })));
   }
 
   function destroy() {

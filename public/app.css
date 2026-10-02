@@ -194,6 +194,59 @@ button:disabled { opacity: .55; cursor: progress; }
 .meter .fill.red { background: var(--red); }
 .meter .value { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 
+/* Bars beside the signal figure, because a number in dB says nothing to most people. The
+   colour and the count come from the same reading; the title says what it means. */
+.signal-meter {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 11px;
+  margin-right: 7px;
+  vertical-align: -1px;
+}
+
+.signal-meter i {
+  width: 3px;
+  border-radius: 1px;
+  background: var(--surface-2);
+}
+
+.signal-meter i:nth-child(1) { height: 3px; }
+.signal-meter i:nth-child(2) { height: 5px; }
+.signal-meter i:nth-child(3) { height: 7px; }
+.signal-meter i:nth-child(4) { height: 9px; }
+.signal-meter i:nth-child(5) { height: 11px; }
+
+.signal-meter.green i.on { background: var(--green); }
+.signal-meter.yellow i.on { background: var(--yellow); }
+.signal-meter.red i.on { background: var(--red); }
+
+/* The traffic map a station draws. The picture is already a map, so it is shown as it came;
+   the buttons pick which of the three extents to look at. */
+.traffic { margin-top: 12px; }
+
+.traffic-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+}
+
+.traffic-zooms { display: inline-flex; gap: 4px; margin-left: auto; }
+.traffic-zooms button { padding: 2px 9px; font-size: 12px; }
+.traffic-zooms button.is-on { border-color: var(--accent); color: var(--accent); }
+
+/* Drawn small and square, and scaled up: 200 pixels is all the station sends. */
+.traffic-map {
+  width: 100%;
+  max-width: 420px;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  background: var(--surface-2);
+  image-rendering: auto;
+}
+
 .kv { display: grid; grid-template-columns: 110px 1fr; gap: 2px 8px; font-size: 12.5px; }
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; overflow-wrap: anywhere; }
@@ -540,12 +593,17 @@ button:disabled { opacity: .55; cursor: progress; }
 .video-wrap.is-radio { aspect-ratio: auto; height: clamp(190px, 30vw, 260px); }
 .video-wrap.is-radio video { opacity: 0; }
 
+/* A station sends a small picture -- a logo is typically 200 square -- and an img left to
+   itself draws at that size, so the limits below were never reached and it sat small in the
+   middle of a large player. Given a height it fills the space it is allowed; the cap keeps a
+   200-pixel picture from being blown up past the point where it only looks soft. */
 .overlay-art {
   position: absolute;
   left: 50%;
   top: 50%;
-  max-width: 40%;
-  max-height: 52%;
+  width: auto;
+  height: min(62%, 440px);
+  max-width: 70%;
   transform: translate(-50%, -50%);
   border-radius: 6px;
   box-shadow: 0 2px 12px rgb(0 0 0 / .6);

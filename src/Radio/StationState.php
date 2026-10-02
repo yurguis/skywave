@@ -39,9 +39,14 @@ final class StationState
     private ?string $alert     = null;
     private ?string $error     = null;
     private ?float $bitrate    = null;
-    private ?float $mer        = null;
-    private ?float $ber        = null;
-    private ?float $gain       = null;
+    /** @var array<int, array<string, mixed>> traffic maps the station drew, by how far out they reach */
+    private array $traffic = [];
+
+    /** HDC's coding mode, as the audio itself reports it. Every station is HDC; the mode varies. */
+    private ?int $codecMode = null;
+    private ?float $mer     = null;
+    private ?float $ber     = null;
+    private ?float $gain    = null;
 
     /** @var array<int, array{number: int, name: ?string, type: ?string}> programs on this frequency */
     private array $programs = [];
@@ -115,6 +120,8 @@ final class StationState
             'genre'        => $this->genre,
             'alert'        => $this->alert,
             'bitrate'      => $this->bitrate,
+            'codecMode'    => $this->codecMode,
+            'traffic'      => $this->trafficMaps(),
             'mer'          => $this->mer,
             'ber'          => $this->ber,
             'gain'         => $this->gain,
@@ -249,6 +256,16 @@ final class StationState
                     $this->rememberProgram((int) $number, null, trim($type[1]));
                 }
 
+                // Only the program being listened to: the others describe their own audio.
+                if ((int) $number === $this->program && preg_match('/codec: (\d+)/', $value, $codec)) {
+                    $this->codecMode = (int) $codec[1];
+                }
+
+                break;
+
+            case 'HERE Image':
+                $this->applyHereImage($value);
+
                 break;
 
             case 'SIG Service':
@@ -274,6 +291,66 @@ final class StationState
 
                 break;
         }
+    }
+
+    /**
+     * The traffic maps on offer, closest first.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function trafficMaps(): array
+    {
+        ksort($this->traffic);
+
+        return array_values($this->traffic);
+    }
+
+    /**
+     * A map the station drew and broadcast: how the roads are moving, or where it is raining.
+     *
+     * Only some stations send these, and only through the HERE data service. nrsc5 unpacks
+     * them itself and says where on earth each one belongs, so there is nothing to decode
+     * here: the picture is already a map, with streets and names drawn on it, and the
+     * corners say where to put it. It is written beside the playlist under the time it was
+     * made and its own name, which is how it is found again.
+     *
+     * Nine arrive, the same place at nine extents -- three heights by three widths. The
+     * square ones, where both halves of the name agree, are the ones worth offering: close
+     * in, the city, and the whole metro area. The stretched ones are not.
+     */
+    private function applyHereImage(string $fields): void
+    {
+        $shape = '/^type=(\w+).*\btime=(\S+), lat1=([-\d.]+), lon1=([-\d.]+), lat2=([-\d.]+), lon2=([-\d.]+), name=(\S+), size=\d+/';
+
+        if (!preg_match($shape, $fields, $match)) {
+            return;
+        }
+
+        // Weather is a transparent sheet of rain and needs a map under it to mean anything,
+        // which is a different piece of work; traffic stands on its own.
+        if ($match[1] !== 'TRAFFIC' || !preg_match('/^trafficMap_(\d)_(\d)_/', $match[7], $zoom)) {
+            return;
+        }
+
+        if ($zoom[1] !== $zoom[2]) {
+            return;
+        }
+
+        $at = strtotime($match[2]);
+
+        if ($at === false) {
+            return;
+        }
+
+        $this->traffic[(int) $zoom[1]] = [
+            'zoom'  => (int) $zoom[1],
+            'file'  => $at . '_' . $match[7],
+            'at'    => $at,
+            'north' => (float) $match[3],
+            'west'  => (float) $match[4],
+            'south' => (float) $match[5],
+            'east'  => (float) $match[6],
+        ];
     }
 
     /**
@@ -313,7 +390,13 @@ final class StationState
 
         // Only pictures, and only names that are plainly a file: what a broadcast sends is
         // going to be served to a browser from the session's own directory.
-        if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]*\.(jpe?g|png)$/i', $name)) {
+        //
+        // The dollar is in here because stations use it. A logo arrives named for its call
+        // sign and program -- WRTO sends SLWRTO$$010003META.png -- and a list without it
+        // threw away every picture the station sent. What the list is for is refusing a
+        // name that is a path rather than a file, and it still does: no separator, no dots
+        // leading anywhere, nothing that is not a picture.
+        if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9._$-]*\.(jpe?g|png)$/i', $name)) {
             return;
         }
 

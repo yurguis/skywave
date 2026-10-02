@@ -403,10 +403,15 @@ class LiveStreams
      * nrsc5 writes them into the session's directory under the number the station gave
      * them and their own name. The pattern is the whole of the trust placed in that name:
      * a number, an underscore, and a plain file name ending in a picture's extension.
+     *
+     * The dollar belongs in that name, as it does where the name is read: a station logo
+     * arrives called SLWRTO$$010003META.png, and a pattern without it refuses to hand over
+     * the picture it has just been told to show. What is being refused is a name that is a
+     * path -- a separator, a climb upwards, anything that is not a picture -- and it still is.
      */
     public function resolvePicture(string $id, string $file): ?string
     {
-        if (!self::isValidId($id) || !preg_match('/^\d+_[A-Za-z0-9][A-Za-z0-9._-]*\.(jpe?g|png)$/i', $file)) {
+        if (!self::isValidId($id) || !preg_match('/^\d+_[A-Za-z0-9][A-Za-z0-9._$-]*\.(jpe?g|png)$/i', $file)) {
             return null;
         }
 
@@ -811,7 +816,25 @@ class LiveStreams
                 : null;
         }
 
-        return $session['radio'] + $station + ['synchronized' => false, 'programs' => []];
+        // The traffic maps, on the same terms: a map the station has finished drawing and
+        // that is on disk to be served.
+        $station['traffic'] = array_values(array_filter(array_map(
+            function (array $map) use ($session): ?array {
+                $file = $map['file'] ?? null;
+
+                if (!is_string($file) || $this->resolvePicture($session['id'], $file) === null) {
+                    return null;
+                }
+
+                $map['url'] = "/radio/{$session['id']}/" . rawurlencode($file);
+                unset($map['file']);
+
+                return $map;
+            },
+            is_array($station['traffic'] ?? null) ? $station['traffic'] : []
+        )));
+
+        return $session['radio'] + $station + ['synchronized' => false, 'programs' => [], 'traffic' => []];
     }
 
     private function isRunning(int $pid): bool
