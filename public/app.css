@@ -1509,8 +1509,9 @@ button.record.is-recording,
   .radio-volume { flex: 1 1 100%; max-width: 280px; order: 3; }
   .radio-signal-box { margin-left: 0; order: 4; flex: 1 1 100%; justify-content: center; }
 
-  .radio-diag { justify-self: center; }
-  .radio-diag > summary { margin-inline: auto; }
+  /* Not this. The reception figures are reference data, read down a left edge like the
+     panels beside them -- and centring the disclosure shrank it to its own content, which
+     left the three cards narrower than the card holding them. */
 }
 
 /* Touch targets.
