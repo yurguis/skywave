@@ -62,6 +62,20 @@ class LogsTest extends TestCase
         $this->assertSame(['Guide', 'Live', 'Recordings', 'Server'], $groups);
     }
 
+    public function testARadioStationBringsTheLogThatExplainsIt(): void
+    {
+        // A radio session writes two logs. ffmpeg's says nothing when a station will not
+        // play, because ffmpeg was never given anything to object to; nrsc5's is where
+        // the reason is.
+        file_put_contents($this->directory . '/hls/abc123/ffmpeg.log', '');
+        file_put_contents($this->directory . '/hls/abc123/nrsc5.log', "14:31:16 Synchronized\n");
+
+        $names = array_column($this->logs->sources(), 'name');
+
+        sort($names);
+        $this->assertSame(['Live stream abc123', 'Radio station abc123'], $names);
+    }
+
     public function testARecordingKeepsItsNameWithoutTheExtension(): void
     {
         file_put_contents($this->directory . '/recordings/The Late Show.ts.log', "frame=1\n");

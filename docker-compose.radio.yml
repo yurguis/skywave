@@ -1,0 +1,69 @@
+# Optional overlay: HD Radio, from an RTL-SDR dongle.
+#
+# HD Radio is decoded by nrsc5, which the image does not carry: its audio codec is
+# proprietary. Building it is opt-in and stays on this machine; read
+# docker/nrsc5/README.md for what building it commits you to.
+#
+#   docker/nrsc5/build-nrsc5.sh
+#   docker compose -f docker-compose.yml -f docker-compose.radio.yml up -d --build
+#
+# or name both files once in .env and keep using plain "docker compose":
+#
+#   echo 'COMPOSE_FILE=docker-compose.yml:docker-compose.radio.yml' >> .env
+#
+# Then say where the dongle is, in .env: RADIO_RTL_TCP for one shared by rtl_tcp, or
+# RADIO_DEVICE for one plugged into this machine. Until one of them is set the radio
+# stays off and the page does not mention it.
+#
+# Without a dongle, add the simulator and a capture of raw I/Q samples (set
+# RADIO_CAPTURE_FILE in .env), and point the radio at it with RADIO_RTL_TCP=127.0.0.1:
+#
+#   docker compose --profile radio-simulator up -d --build
+#
+# Only the web service gets this. The guide and the recorder have nothing to do with
+# radio: a station sends no listings, and nothing here records one.
+
+services:
+  web:
+    environment:
+      NRSC5: /opt/nrsc5/bin/nrsc5
+      # A dongle shared over the network, as host or host:port (rtl_tcp's port is 1234).
+      RADIO_RTL_TCP: ${RADIO_RTL_TCP:-}
+      # Or one plugged into this machine, counting from 0. It has to be passed into the
+      # container as well, which is the next thing to add here once it has been tried
+      # with a real dongle; until then, run rtl_tcp on the host and use the line above.
+      RADIO_DEVICE: ${RADIO_DEVICE:-}
+      # Tuner gain in dB and the dongle's frequency error in ppm. Left empty, nrsc5
+      # finds a gain by itself and assumes the dongle is accurate.
+      RADIO_GAIN: ${RADIO_GAIN:-}
+      RADIO_PPM: ${RADIO_PPM:-}
+      # Seconds a scan waits on each frequency before calling it empty; 6 when unset.
+      RADIO_SCAN_SECONDS: ${RADIO_SCAN_SECONDS:-}
+    volumes:
+      # Where the build wrote nrsc5 and its libraries. It must be readable by the
+      # container's user, which a directory docker created for itself is not; see
+      # docker/nrsc5/README.md.
+      - "${NRSC5_DIR:-./data/nrsc5}:/opt/nrsc5:ro"
+
+  radio-simulator:
+    profiles: [radio-simulator]
+    build: .
+    image: skywave:local
+    # Host networking keeps 127.0.0.1 pointing at the simulator. On Docker Desktop,
+    # where the web service publishes its port instead, set
+    # RADIO_SIMULATOR_NETWORK=service:web so the two share an address.
+    network_mode: ${RADIO_SIMULATOR_NETWORK:-host}
+    restart: unless-stopped
+    # The image's health check probes the web UI, which this container does not run.
+    healthcheck:
+      disable: true
+    command:
+      - php
+      - tools/fake-rtl-tcp.php
+      - --bind=${RADIO_SIMULATOR_BIND:-127.0.0.1}
+      - --capture=/captures/radio.cu8
+      - --capture-frequency=${RADIO_CAPTURE_FREQUENCY:-90.5}
+    volumes:
+      # Set RADIO_CAPTURE_FILE in .env; without it the simulator exits with
+      # "Capture file not readable".
+      - ${RADIO_CAPTURE_FILE:-/dev/null}:/captures/radio.cu8:ro

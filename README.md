@@ -10,6 +10,8 @@ internet connection.
 - **Browse** what is on, read from the broadcast's own guide tables, with station logos.
 - **Record** a program from the guide and play it back in the same player.
 - **Analyze** the transport stream itself: programs, bitstreams and tables.
+- **Listen** to HD Radio stations through an RTL-SDR dongle, with the station's name and
+  what is playing. This part is optional and needs [nrsc5](#hd-radio).
 
 Start it with [Docker](#docker), or run it straight from PHP.
 
@@ -326,6 +328,8 @@ that went wrong can be read without a terminal:
 - **Recorder** and **Guide** — what those services are doing between jobs.
 - **Each recording** and **each live stream** — the transcoder's own output, which is
   where a recording that stopped early explains itself.
+- **Each radio station** being played — what nrsc5 said about it, which is where a
+  station that will not play explains itself.
 
 The page asks for a log by name from a fixed list, never by path, and each one is read
 from its end so a large file costs no more to open than a small one.
@@ -346,6 +350,97 @@ Answers discovery, control and HTTP streaming (port 5004) on 127.0.0.1 like a re
 device. With `--capture`, a raw MPEG-TS recording is broadcast on one channel with its
 real lineup and replayed in a loop at its original bitrate; other channels have no signal.
 Use `--bind=0.0.0.0` to make it discoverable by broadcast.
+
+## HD Radio
+
+Digital FM stations, received with an RTL-SDR dongle rather than an HDHomeRun, which
+cannot tune the FM band. The radio appears in the device list beside the tuners: enter a
+frequency, press Listen, and it plays in the same player, with the same rewind window.
+
+A dongle is nothing like a tuner. It hands over raw radio samples and does none of the
+work, so everything between those samples and sound is software:
+[nrsc5](https://github.com/theori-io/nrsc5) demodulates the station and decodes its audio,
+and ffmpeg turns that into the HLS a browser plays. Skywave starts the two, joins them, and
+reads what nrsc5 says about the station as it goes: its name and slogan, the title and
+artist, how strong the signal is, which programs it carries (HD1, HD2 and so on), and the
+album cover or logo when it sends one.
+
+It is off until it is told where the dongle is:
+
+| Variable | Purpose |
+|---|---|
+| `RADIO_RTL_TCP` | A dongle shared over the network by `rtl_tcp`, as `host` or `host:port` (1234 when not given) |
+| `RADIO_DEVICE` | A dongle plugged into this machine, counting from `0` |
+| `RADIO_GAIN` | Tuner gain in dB. Left empty, nrsc5 finds one itself each time a station starts |
+| `RADIO_PPM` | The dongle's frequency error in parts per million, for one that is off |
+| `RADIO_SCAN_SECONDS` | How long a scan waits on each frequency, 6 by default. Longer finds weaker stations; shorter gets through the empty ones faster |
+| `NRSC5` | Path to nrsc5, when it is not on `PATH` |
+
+```bash
+RADIO_DEVICE=0 PHP_CLI_SERVER_WORKERS=4 php -S 0.0.0.0:8080 -t public public/index.php
+```
+
+`rtl_tcp` is only needed when the dongle is somewhere Skywave is not: on another machine,
+or on the host while Skywave runs in a container that cannot be given the USB device. It
+serves one listener at a time, and so does a dongle opened directly.
+
+On Linux the dongle arrives already taken. The kernel sees an RTL2832U, loads the DVB-T
+driver it was sold as needing, and librtlsdr is then refused it -- `usb_claim_interface
+error -6`, or simply "device is already in use". Say once that the kernel should leave it
+alone:
+
+```bash
+printf 'blacklist dvb_usb_rtl28xxu\nblacklist rtl2832\nblacklist rtl2830\n' \
+  | sudo tee /etc/modprobe.d/blacklist-rtl-sdr.conf
+sudo modprobe -r dvb_usb_rtl28xxu
+```
+
+Who may then open it is decided by librtlsdr's udev rules, which a distribution's package
+usually installs; without them the dongle is root's alone, and running `rtl_tcp` as root is
+no way to keep something up for months. Both of these belong to the machine the dongle is
+plugged into -- a container has no kernel of its own, so passing the device in does not
+help until the host has let go of it. macOS has no such driver and needs none of this.
+
+Nothing on the FM band announces what else is on it, so the only station list there can
+be is the one made by listening. A station is kept as a button once it has been played, in
+the guide's database, so every browser and phone sees the same ones; the × beside it
+forgets it.
+
+**Scan** finds them for you, the only way there is: by pointing nrsc5 at each frequency in
+turn and waiting to see whether it locks on. The dial is 101 frequencies (the odd tenths,
+87.9 to 107.9) and most are empty, each costing the whole wait, so a full scan takes about
+ten minutes. It runs in the background and can be stopped; what it has found by then is
+kept. It needs the dongle to itself, so nothing can be listened to while it runs, and it
+will not start while somebody else is listening. From a terminal:
+
+```bash
+php tools/radio-scan.php                         # the whole dial
+php tools/radio-scan.php --from=88.1 --to=92.1   # part of it
+```
+
+In Docker, see [HD Radio](#hd-radio-1) under Docker: nrsc5 is built separately.
+
+### Radio simulator (no hardware needed)
+
+```bash
+php tools/fake-rtl-tcp.php --verbose
+php tools/fake-rtl-tcp.php --capture=~/sample.cu8 --capture-frequency=90.5
+RADIO_RTL_TCP=127.0.0.1 php -S 0.0.0.0:8080 -t public public/index.php
+```
+
+Speaks `rtl_tcp` on 127.0.0.1:1234 like a shared dongle, so nrsc5 talks to it as it would
+to the real thing. With `--capture`, a recording of raw I/Q samples becomes the only
+station on the dial, replayed in a loop at the speed it was recorded; every other
+frequency is noise, which leaves nrsc5 searching exactly as an empty channel would.
+
+A capture is what `nrsc5 -w FILE` writes: unsigned 8-bit I and Q at 1,488,375 samples a
+second. The nrsc5 source ships seventeen seconds of one, compressed:
+
+```bash
+xz -dk -c nrsc5/support/sample.xz > ~/sample.cu8
+```
+
+The station drops out for a moment each time the recording starts over.
 
 ## Analyzer (command line)
 
@@ -408,6 +503,7 @@ Settings (environment variables):
 | `RECORDING_CONVERT_TO` | `hls` | What the browser-ready copy is made as: `mp4` for one file that keeps the broadcast's surround sound, or `hls` for a finished playlist at the heights above, which opens with its full length and seek bar and needs no transcoding while you watch (stereo, and a directory rather than a file) |
 | `RECORDING_PAD_START` / `RECORDING_PAD_END` | `60` / `180` | Seconds recorded before and after a program |
 | `RECORDER_TICK` | `10` | Seconds between recorder checks for due recordings |
+| `RADIO_RTL_TCP` / `RADIO_DEVICE` | | Where the HD Radio dongle is; the radio is off until one is set. See [HD Radio](#hd-radio) |
 | `TLS_DIR` | `./certs` | Folder holding the certificate and key, mounted read-only at `/certs` |
 | `TLS_PORT` | `8443` | Port HTTPS listens on, when a certificate is present |
 | `TLS_CERT` / `TLS_KEY` | `/certs/fullchain.pem` / `/certs/privkey.pem` | Where in the container to read them |
@@ -447,6 +543,36 @@ The recipe is committed here; the result never is. It is patent-encumbered and c
 redistributed, and the patch was declined by ffmpeg as unfinished, so treat what it produces
 as unverified. [docker/ac4/README.md](docker/ac4/README.md) sets out what building it
 commits you to. Skip it and nothing changes — those stations carry on playing silently.
+
+### HD Radio
+
+The image does not carry nrsc5. HD Radio's audio codec is proprietary, so the decoder is
+built by you, for you, the same way the AC-4 one is:
+
+```bash
+docker/nrsc5/build-nrsc5.sh
+echo 'COMPOSE_FILE=docker-compose.yml:docker-compose.radio.yml' >> .env
+echo 'RADIO_RTL_TCP=192.168.1.20' >> .env
+docker compose up -d --build
+```
+
+The build takes about a minute and writes `data/nrsc5`, which the overlay mounts into the
+web container. Use the script rather than a bare `docker build -o`: a folder docker creates
+for itself is readable by its owner alone, and the container, running as someone else, is
+then shown an nrsc5 it cannot reach. [docker/nrsc5/README.md](docker/nrsc5/README.md) has
+the detail, and what building it commits you to.
+
+`RADIO_RTL_TCP` is the way in for now: run `rtl_tcp -a 0.0.0.0` on the machine the dongle
+is plugged into and name that machine. Passing the USB device into the container, so that
+`RADIO_DEVICE` works there too, is not set up yet.
+
+Without a dongle, the simulator has a profile of its own. Set `RADIO_CAPTURE_FILE` in `.env`
+to a capture and point the radio at it:
+
+```bash
+echo 'RADIO_RTL_TCP=127.0.0.1' >> .env
+docker compose --profile radio-simulator up -d --build
+```
 
 ### HTTPS
 
@@ -504,6 +630,11 @@ anyone on the path.
   all. The ones a broadcaster delivers over the internet play without sound, unless you
   build a decoder yourself. None can be recorded. See [ATSC 3.0](#atsc-30) and
   [AC-4 audio](#ac-4-audio).
+- **One station per dongle.** A dongle hears one frequency and nrsc5 plays one program of
+  it, so everyone listening hears the same thing; asking for another station while somebody
+  else is listening is refused rather than changing theirs, and a scan takes the dongle
+  from everyone until it ends. Radio is not recorded, has no guide, and its traffic and
+  weather maps are not shown.
 - **Nothing is ever deleted for you.** The Recordings tab warns when the drive runs low and
   refuses to start a recording below 2 GB free, but making room is yours to do.
 - **Every conversion runs on this machine.** HDHomeRun tuners do not transcode, so each
@@ -530,6 +661,9 @@ yourself:
 - **The guide collector**, which nothing starts for you:
   `php tools/guide.php run --interval=240`
 - **The recorder**, likewise: `php tools/recorder.php run --tick=10`
+
+HD Radio, if you want it, needs a fourth: **nrsc5 on `PATH`**, or `NRSC5` pointing at it,
+built from [its source](https://github.com/theori-io/nrsc5).
 
 The database, recordings and HLS working directory default to `data/guide.sqlite`,
 `data/recordings` and the system temp directory, so no volumes or paths need setting up.

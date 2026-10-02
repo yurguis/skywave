@@ -11,6 +11,8 @@ use RuntimeException;
 use Skywave\Hdhomerun\ControlClient;
 use Skywave\Hdhomerun\Tuner;
 use Skywave\Platform;
+use Skywave\Radio\Listener;
+use Skywave\Radio\Receiver;
 
 /**
  * Live playback sessions: one ffmpeg process per device, tuner, channel and program,
@@ -20,6 +22,10 @@ use Skywave\Platform;
  *   <dir>/<id>/session.json   stream details, the ffmpeg pid and who is watching
  *   <dir>/<id>/index.m3u8     rolling playlist, plus seg_NNNNN.ts segments
  *   <dir>/<id>/ffmpeg.log     transcoder errors
+ *
+ * A radio station is a session too (see joinRadio): the same directory, the same playlist
+ * and the same bookkeeping, fed by nrsc5 rather than by a tuner, with what nrsc5 says about
+ * the station kept beside it in radio.json.
  *
  * Viewers keep a session alive by asking for its status. A session is stopped once all
  * its viewers have been quiet for the viewer timeout, and forgotten a timeout after its
@@ -49,14 +55,17 @@ class LiveStreams
     /** An ffmpeg that can decode AC-4, or '' when nobody built one. */
     private string $ac4Ffmpeg;
     private int $rewindSeconds;
+    /** The PHP that runs tools/radio.php: a session's process has to be the command line one. */
+    private string $php;
 
     /**
      * @param int[]  $renditions    picture heights to offer, e.g. [720, 480, 360]; players switch
      *                              between them as the connection allows
      * @param int    $rewindMinutes how far back viewers can go in a live stream
      * @param string $ac4Ffmpeg     a second binary, used only for stations whose audio is AC-4
+     * @param string $php           the PHP command line binary, which radio sessions run under
      */
-    public function __construct(string $directory, int $maxStreams = 2, int $viewerTimeout = 30, array $renditions = [720, 480, 360], string $ffmpeg = 'ffmpeg', int $rewindMinutes = 5, string $ac4Ffmpeg = '')
+    public function __construct(string $directory, int $maxStreams = 2, int $viewerTimeout = 30, array $renditions = [720, 480, 360], string $ffmpeg = 'ffmpeg', int $rewindMinutes = 5, string $ac4Ffmpeg = '', string $php = 'php')
     {
         $heights = array_values(array_unique(array_map(fn ($height) => max(144, min(2160, (int) $height)), $renditions)));
         rsort($heights);
@@ -68,11 +77,13 @@ class LiveStreams
         $this->ffmpeg        = $ffmpeg;
         $this->ac4Ffmpeg     = $ac4Ffmpeg;
         $this->rewindSeconds = max(1, $rewindMinutes) * 60;
+        $this->php           = $php;
     }
 
     /**
      * Settings from HLS_DIR, MAX_STREAMS, HLS_VIEWER_TIMEOUT, HLS_RENDITIONS, HLS_DVR_MINUTES,
-     * FFMPEG and FFMPEG_AC4.
+     * FFMPEG, FFMPEG_AC4 and GUIDE_PHP, which names the PHP command line binary for every
+     * background job here and not only the guide's.
      */
     public static function fromEnvironment(): self
     {
@@ -89,7 +100,8 @@ class LiveStreams
             array_map('intval', array_filter(array_map('trim', explode(',', $env('HLS_RENDITIONS', '720,480,360'))), 'ctype_digit')),
             $env('FFMPEG', 'ffmpeg'),
             (int) $env('HLS_DVR_MINUTES', '5'),
-            $env('FFMPEG_AC4', '')
+            $env('FFMPEG_AC4', ''),
+            $env('GUIDE_PHP', 'php')
         );
     }
 
@@ -157,6 +169,104 @@ class LiveStreams
             $this->save($session);
 
             return $this->describe($session);
+        });
+    }
+
+    /**
+     * Listen to an HD Radio program.
+     *
+     * A third way in, beside a tuner and a manifest. There is no device to tune and none to
+     * give back: nrsc5 opens the dongle itself when the session starts and lets go of it
+     * when the session ends.
+     *
+     * One dongle hears one frequency, and nrsc5 plays one program of it, so there is only
+     * ever one radio session. Asking for a different station replaces it -- unless somebody
+     * else is listening, who would otherwise have their station changed under them.
+     *
+     * @return array<string, mixed>
+     */
+    public function joinRadio(Receiver $receiver, float $frequency, int $program, string $viewer): array
+    {
+        return $this->locked(function () use ($receiver, $frequency, $program, $viewer): array {
+            $this->reap();
+
+            $frequency = Receiver::validateFrequency($frequency);
+            $program   = Receiver::validateProgram($program);
+            $id        = substr(hash('sha256', sprintf('radio|%.1f|%d', $frequency, $program)), 0, 16);
+            $session   = $this->load($id);
+
+            if ($session !== null && !$this->isRunning($session['pid'])) {
+                $this->terminate($session, false);
+                $session = null;
+            }
+
+            if ($session === null) {
+                foreach ($this->loadAll() as $other) {
+                    if (($other['radio'] ?? null) === null) {
+                        continue;
+                    }
+
+                    if (array_diff_key($other['viewers'], [$viewer => true]) !== []) {
+                        throw new ApiException("Somebody else is listening to {$other['channel']}, and one dongle hears one station at a time", 409);
+                    }
+
+                    $this->terminate($other, false);
+                }
+
+                if (count($this->loadAll()) >= $this->maxStreams) {
+                    throw new ApiException("Already playing $this->maxStreams streams, the most allowed (MAX_STREAMS)", 409);
+                }
+
+                $directory = "$this->directory/$id";
+
+                // tools/radio.php rather than ffmpeg alone: it runs nrsc5 into ffmpeg and
+                // keeps the station's details. Its command line names ffmpeg, which is what
+                // isRunning() looks for in a pid before believing it is still ours.
+                $session = $this->spawn($id, array_merge([
+                    $this->php, dirname(__DIR__, 2) . '/tools/radio.php',
+                    "--directory=$directory",
+                    "--ffmpeg=$this->ffmpeg",
+                    "--rewind=$this->rewindSeconds",
+                    "--program=$program",
+                    '--',
+                ], $receiver->arguments($frequency, $program, $directory)), [
+                    'id'              => $id,
+                    'host'            => 'radio',
+                    'tuner'           => null,
+                    'channel'         => sprintf('%.1f FM HD%d', $frequency, $program + 1),
+                    'physicalChannel' => null,
+                    'program'         => $program,
+                    'targetBefore'    => null,
+                    'renditions'      => 1,
+                    'audio'           => [],
+                    'radio'           => ['frequency' => $frequency, 'program' => $program],
+                ]);
+            }
+
+            $session['viewers'][$viewer] = time();
+            $this->save($session);
+
+            return $this->describe($session);
+        });
+    }
+
+    /**
+     * The station being listened to, or null when the radio is idle.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function radioSession(): ?array
+    {
+        return $this->locked(function (): ?array {
+            $this->reap();
+
+            foreach ($this->loadAll() as $session) {
+                if (($session['radio'] ?? null) !== null) {
+                    return $this->describe($session);
+                }
+            }
+
+            return null;
         });
     }
 
@@ -279,6 +389,29 @@ class LiveStreams
     public function resolveFile(string $id, string $file): ?string
     {
         if (!self::isValidId($id) || !preg_match('/^(index\.m3u8|v\d\.m3u8|v\d_\d{5}\.ts)$/', $file)) {
+            return null;
+        }
+
+        $path = "$this->directory/$id/$file";
+
+        return is_file($path) ? $path : null;
+    }
+
+    /**
+     * Path of a picture a radio station sent, or null when it is not one.
+     *
+     * nrsc5 writes them into the session's directory under the number the station gave
+     * them and their own name. The pattern is the whole of the trust placed in that name:
+     * a number, an underscore, and a plain file name ending in a picture's extension.
+     *
+     * The dollar belongs in that name, as it does where the name is read: a station logo
+     * arrives called SLWRTO$$010003META.png, and a pattern without it refuses to hand over
+     * the picture it has just been told to show. What is being refused is a name that is a
+     * path -- a separator, a climb upwards, anything that is not a picture -- and it still is.
+     */
+    public function resolvePicture(string $id, string $file): ?string
+    {
+        if (!self::isValidId($id) || !preg_match('/^\d+_[A-Za-z0-9][A-Za-z0-9._$-]*\.(jpe?g|png)$/i', $file)) {
             return null;
         }
 
@@ -633,7 +766,7 @@ class LiveStreams
             $segments = min($segments, $playlist === false ? 0 : substr_count($playlist, '#EXTINF'));
         }
 
-        return [
+        $described = [
             'id'        => $session['id'],
             'host'      => $session['host'],
             'tuner'     => $session['tuner'],
@@ -648,6 +781,60 @@ class LiveStreams
             'audio'     => $session['audio'] ?? [],
             'error'     => $alive ? null : (self::lastLogLine("$directory/ffmpeg.log") ?? 'The transcoder stopped'),
         ];
+
+        // Only a radio session has a station to describe, and only it carries the key, so
+        // nothing that reads a television session sees anything new.
+        if (($session['radio'] ?? null) !== null) {
+            $described['radio'] = $this->describeStation($session);
+        }
+
+        return $described;
+    }
+
+    /**
+     * What nrsc5 has learned about the station so far, as the session's process last wrote it.
+     *
+     * Empty of everything but the frequency until the station is found, and it may never be:
+     * a frequency with no HD Radio on it is indistinguishable from one still being searched.
+     *
+     * @param array<string, mixed> $session
+     * @return array<string, mixed>
+     */
+    private function describeStation(array $session): array
+    {
+        $directory = "$this->directory/{$session['id']}";
+        $json      = @file_get_contents("$directory/" . Listener::STATE_FILE);
+        $station   = $json === false ? null : json_decode($json, true);
+        $station   = is_array($station) ? $station : [];
+
+        // A picture is named as soon as the station finishes sending it, and offered only
+        // once it can be served.
+        foreach (['art', 'logo'] as $picture) {
+            $file              = $station[$picture] ?? null;
+            $station[$picture] = is_string($file) && $this->resolvePicture($session['id'], $file) !== null
+                ? "/radio/{$session['id']}/" . rawurlencode($file)
+                : null;
+        }
+
+        // The traffic maps, on the same terms: a map the station has finished drawing and
+        // that is on disk to be served.
+        $station['traffic'] = array_values(array_filter(array_map(
+            function (array $map) use ($session): ?array {
+                $file = $map['file'] ?? null;
+
+                if (!is_string($file) || $this->resolvePicture($session['id'], $file) === null) {
+                    return null;
+                }
+
+                $map['url'] = "/radio/{$session['id']}/" . rawurlencode($file);
+                unset($map['file']);
+
+                return $map;
+            },
+            is_array($station['traffic'] ?? null) ? $station['traffic'] : []
+        )));
+
+        return $session['radio'] + $station + ['synchronized' => false, 'programs' => [], 'traffic' => []];
     }
 
     private function isRunning(int $pid): bool

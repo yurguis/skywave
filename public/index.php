@@ -14,6 +14,7 @@ declare(strict_types=1);
  *
  * HDHOMERUN_DEVICES=192.168.1.50,10.0.0.7 lists devices broadcast discovery cannot find.
  * Live playback needs ffmpeg on the PATH; see LiveStreams for its settings.
+ * HD Radio needs nrsc5 as well, and RADIO_RTL_TCP or RADIO_DEVICE to say where its dongle is.
  */
 
 use Skywave\Dvr\Recorder;
@@ -26,6 +27,9 @@ use Skywave\Guide\GuideJobs;
 use Skywave\Guide\GuideStore;
 use Skywave\Guide\ProgrammeArtwork;
 use Skywave\Hdhomerun\Discovery;
+use Skywave\Radio\Receiver;
+use Skywave\Radio\ScanJobs;
+use Skywave\Radio\StationStore;
 use Skywave\Web\Api;
 use Skywave\Web\LiveStreams;
 use Skywave\Web\Logs;
@@ -67,6 +71,24 @@ if (str_starts_with($path, '/hls/')) {
     header('Content-Type: ' . ($isPlaylist ? 'application/vnd.apple.mpegurl' : 'video/mp2t'));
     header('Cache-Control: ' . ($isPlaylist ? 'no-cache' : 'max-age=60'));
     echo $data;
+
+    return;
+}
+
+// Pictures a radio station sent with its programme: an album cover, or the station's logo.
+// They live with the session's playlist and go when it does, so nothing is kept for long.
+if (preg_match('#^/radio/([a-f0-9]{16})/([^/]+)$#', $path, $match)) {
+    $file = LiveStreams::fromEnvironment()->resolvePicture($match[1], rawurldecode($match[2]));
+
+    if ($file === null) {
+        http_response_code(404);
+
+        return;
+    }
+
+    header('Content-Type: ' . (preg_match('/\.png$/i', $file) ? 'image/png' : 'image/jpeg'));
+    header('Cache-Control: max-age=3600');
+    readfile($file);
 
     return;
 }
@@ -222,6 +244,24 @@ if (str_starts_with($path, '/api/')) {
         $playback     = null;
     }
 
+    // A radio address that makes no sense only disables the radio; a typo in one setting
+    // must not take the tuners with it.
+    try {
+        $radio = Receiver::fromEnvironment();
+    } catch (Throwable $e) {
+        error_log('HD Radio disabled: ' . $e->getMessage());
+        $radio = null;
+    }
+
+    // Stations are kept in the guide's database. Without it the radio still plays; the
+    // page falls back to remembering stations in the browser.
+    try {
+        $stations = $radio === null ? null : StationStore::fromEnvironment();
+    } catch (Throwable $e) {
+        error_log('Radio stations will not be kept: ' . $e->getMessage());
+        $stations = null;
+    }
+
     (new Api(
         new Discovery(),
         $hosts,
@@ -233,7 +273,10 @@ if (str_starts_with($path, '/api/')) {
         $reservations,
         $playback,
         Logs::fromEnvironment(),
-        $guide !== null && $recordings !== null ? new SeriesRules($guide, $recordings) : null
+        $guide !== null && $recordings !== null ? new SeriesRules($guide, $recordings) : null,
+        $radio,
+        $stations,
+        $radio === null ? null : ScanJobs::fromEnvironment()
     ))
         ->handle(Request::createFromGlobals())
         ->send();

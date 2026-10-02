@@ -30,6 +30,11 @@ use Skywave\Hdhomerun\Packet;
 use Skywave\Hdhomerun\StreamAnalyzer;
 use Skywave\Hdhomerun\StreamProgram;
 use Skywave\Hdhomerun\Tuner;
+use Skywave\Radio\Receiver;
+use Skywave\Radio\RtlTcpClient;
+use Skywave\Radio\ScanJobs;
+use Skywave\Radio\Scanner;
+use Skywave\Radio\StationStore;
 use Skywave\Report\JsonRenderer;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -52,6 +57,13 @@ use Symfony\Component\HttpFoundation\Request;
  *   GET    /api/streams                                  active playback sessions
  *   GET    /api/streams/{id}?viewer=<id>                 session state; keeps the viewer watching
  *   DELETE /api/streams/{id}?viewer=<id>                 stop watching (POST .../leave for sendBeacon)
+ *
+ *   GET  /api/radio                                      the HD Radio dongle and what it is playing
+ *   POST /api/radio/stream  {"frequency": 90.5, "program": 0, "viewer": "<id>"}   listen to a station
+ *   GET    /api/radio/scan                               how a scan is getting on, and the stations known
+ *   POST   /api/radio/scan     {"from": 87.9, "to": 107.9}   look for stations in the background
+ *   DELETE /api/radio/scan                               ask a running scan to stop
+ *   DELETE /api/radio/stations/{frequency}               forget a station
  *
  *   GET  /api/guide?device=<ip>&from=<unix>&hours=4      stored guide for a time window
  *   POST /api/guide/scan     {"device": "<ip>"}          find channels in the background
@@ -95,6 +107,12 @@ class Api
 
     private ?SeriesRules $series;
 
+    private ?Receiver $radio;
+
+    private ?StationStore $stations;
+
+    private ?ScanJobs $scans;
+
     /**
      * @param string[] $configuredHosts devices to list even when broadcast discovery cannot reach them
      * @param LiveStreams|null $streams live playback, or null to disable it
@@ -104,6 +122,10 @@ class Api
      * @param Recorder|null $recorder stops recordings and finds their files
      * @param TunerReservations|null $reservations tuners a recording is using
      * @param RecordingPlayback|null $playback watching recordings back
+     * @param Receiver|null $radio the HD Radio dongle, or null when there is none to speak of
+     * @param StationStore|null $stations radio stations that have been heard, or null when
+     *                                    there is nowhere to keep them
+     * @param ScanJobs|null $scans background scans of the dial
      */
     public function __construct(
         Discovery $discovery,
@@ -116,7 +138,10 @@ class Api
         ?TunerReservations $reservations = null,
         ?RecordingPlayback $playback = null,
         ?Logs $logs = null,
-        ?SeriesRules $series = null
+        ?SeriesRules $series = null,
+        ?Receiver $radio = null,
+        ?StationStore $stations = null,
+        ?ScanJobs $scans = null
     ) {
         $this->discovery       = $discovery;
         $this->configuredHosts = $configuredHosts;
@@ -129,6 +154,9 @@ class Api
         $this->playback        = $playback;
         $this->logs            = $logs;
         $this->series          = $series;
+        $this->radio           = $radio;
+        $this->stations        = $stations;
+        $this->scans           = $scans;
     }
 
     public function handle(Request $request): JsonResponse
@@ -193,6 +221,28 @@ class Api
 
         if ($path === '/api/streams' || str_starts_with($path, '/api/streams/')) {
             return $this->routeStreams($method, $path, $request);
+        }
+
+        if ($path === '/api/radio') {
+            self::requireMethod($method, 'GET');
+
+            return $this->describeRadio();
+        }
+
+        if ($path === '/api/radio/stream') {
+            self::requireMethod($method, 'POST');
+
+            return $this->startRadio(self::jsonBody($request));
+        }
+
+        if ($path === '/api/radio/scan') {
+            return $this->routeRadioScan($method, $request);
+        }
+
+        if (preg_match('#^/api/radio/stations/(\d{2,3}(?:\.\d)?)$#', $path, $match)) {
+            self::requireMethod($method, 'DELETE');
+
+            return $this->forgetStation(Receiver::validateFrequency((float) $match[1]));
         }
 
         if ($path === '/api/guide') {
@@ -762,7 +812,7 @@ class Api
 
         switch ($method) {
             case 'GET':
-                return $streams->status($match[1], $viewer === null ? null : self::validateViewer($viewer));
+                return $this->rememberStation($streams->status($match[1], $viewer === null ? null : self::validateViewer($viewer)));
 
             case 'DELETE':
                 return $streams->leave($match[1], self::validateViewer($viewer));
@@ -809,6 +859,184 @@ class Api
         }
 
         throw new ApiException("No such ATSC 3.0 station: $virtual", 404);
+    }
+
+    /**
+     * The radio as the page needs it: whether there is one, what dongle it is, and what it
+     * is playing.
+     *
+     * A dongle shared over rtl_tcp can be asked what it is, but only while nothing is
+     * listening through it: it answers one client at a time, and nrsc5 is that client for
+     * as long as a station plays. So the question is only put while the radio is idle.
+     *
+     * @return array<string, mixed>
+     */
+    private function describeRadio(): array
+    {
+        if ($this->radio === null || !$this->radio->isConfigured()) {
+            return ['enabled' => false];
+        }
+
+        $session = $this->streams === null ? null : $this->streams->radioSession();
+        $address = $this->radio->rtlTcpAddress();
+        $device  = null;
+        $error   = null;
+
+        if ($this->streams === null) {
+            $error = 'Live playback is not enabled';
+        } elseif ($this->radio->binary() === null) {
+            $error = $this->radio->whyMissing();
+        } elseif ($session === null && $address !== null) {
+            try {
+                $device = (new RtlTcpClient($address['host'], $address['port']))->probe();
+            } catch (RuntimeException $e) {
+                $error = $e->getMessage();
+            }
+        }
+
+        return [
+            'enabled' => true,
+            'device'  => $device,
+            'error'   => $error,
+            'session' => $session,
+            'band'    => ['from' => Receiver::MIN_FREQUENCY, 'to' => Receiver::MAX_FREQUENCY],
+        ] + $this->describeStations() + $this->radio->describe();
+    }
+
+    /**
+     * The stations known and the scan looking for more: the part of the radio that changes
+     * while a scan runs, which is why the page can ask for it alone.
+     *
+     * "stations" is null rather than empty when there is no database to keep them in, so
+     * the page can tell having none from being unable to have any, and keep its own.
+     *
+     * @return array{stations: ?list<array<string, mixed>>, scan: ?array<string, mixed>}
+     */
+    private function describeStations(): array
+    {
+        return [
+            'stations' => $this->stations === null ? null : $this->stations->all(),
+            'scan'     => $this->scans === null ? null : $this->scans->status(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function routeRadioScan(string $method, Request $request): array
+    {
+        $radio = $this->configuredRadio();
+
+        if ($this->scans === null) {
+            throw new ApiException('Scanning is not enabled', 404);
+        }
+
+        if ($method === 'GET') {
+            return $this->describeStations();
+        }
+
+        if ($method === 'DELETE') {
+            $this->scans->stop();
+
+            return $this->describeStations();
+        }
+
+        self::requireMethod($method, 'POST');
+
+        if ($radio->binary() === null) {
+            throw new ApiException($radio->whyMissing(), 503);
+        }
+
+        // An empty body is the whole dial; a body narrows it.
+        $body = $request->getContent() === '' ? [] : self::jsonBody($request);
+        $from = Receiver::validateFrequency($body['from'] ?? Scanner::FIRST);
+        $to   = Receiver::validateFrequency($body['to'] ?? Scanner::LAST);
+
+        if ($from > $to || Scanner::frequencies($from, $to) === []) {
+            throw new ApiException('Expected "from" below "to", with a station frequency between them', 400);
+        }
+
+        // The dongle hears one frequency. A scan would take it from whoever is listening,
+        // so it waits to be asked again once they have stopped.
+        $session = $this->streams === null ? null : $this->streams->radioSession();
+
+        if ($session !== null) {
+            throw new ApiException("The radio is playing {$session['channel']}; stop it first, a scan needs the dongle to itself", 409);
+        }
+
+        if (!$this->scans->start($from, $to)) {
+            throw new ApiException($this->scans->isRunning() ? 'A scan is already running' : 'The scan could not be started', 409);
+        }
+
+        return $this->describeStations();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function forgetStation(float $frequency): array
+    {
+        if ($this->stations === null) {
+            throw new ApiException('There is no database to keep stations in', 404);
+        }
+
+        return ['removed' => $this->stations->remove($frequency)] + $this->describeStations();
+    }
+
+    /**
+     * Keep a station that is playing, once it has said who it is.
+     *
+     * Asked on every status request, because that is when the station's details arrive;
+     * the store only writes when something has changed.
+     *
+     * @param array<string, mixed> $session a described session, radio or not
+     * @return array<string, mixed> the same session
+     */
+    private function rememberStation(array $session): array
+    {
+        $station = $session['radio'] ?? null;
+
+        if ($this->stations !== null && is_array($station) && ($station['synchronized'] ?? false)) {
+            try {
+                $this->stations->save((float) $station['frequency'], $station['station'] ?? null, $station['programs'] ?? [], $station['mer'] ?? null);
+            } catch (\Throwable $e) {
+                // A database that is busy or gone must not stop the radio playing.
+            }
+        }
+
+        return $session;
+    }
+
+    private function configuredRadio(): Receiver
+    {
+        if ($this->radio === null || !$this->radio->isConfigured()) {
+            throw new ApiException('HD Radio is not enabled: set RADIO_RTL_TCP or RADIO_DEVICE', 404);
+        }
+
+        return $this->radio;
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     * @return array<string, mixed>
+     */
+    private function startRadio(array $body): array
+    {
+        $radio = $this->configuredRadio();
+
+        if ($radio->binary() === null) {
+            throw new ApiException($radio->whyMissing(), 503);
+        }
+
+        $frequency = Receiver::validateFrequency($body['frequency'] ?? null);
+        $program   = Receiver::validateProgram($body['program'] ?? 0);
+        $viewer    = self::validateViewer($body['viewer'] ?? null);
+
+        if ($this->scans !== null && $this->scans->isRunning()) {
+            throw new ApiException('A scan is using the dongle; cancel it or wait for it to finish', 409);
+        }
+
+        return $this->rememberStation($this->liveStreams()->joinRadio($radio, $frequency, $program, $viewer));
     }
 
     private function liveStreams(): LiveStreams

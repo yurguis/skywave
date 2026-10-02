@@ -161,6 +161,16 @@ class Logs
             ];
         }
 
+        // A radio session has a second log, and it is the one worth reading: what nrsc5
+        // said about the station, which is where one that will not play explains itself.
+        foreach (self::glob("$this->hlsDirectory/*/nrsc5.log") as $path) {
+            $files['radio-' . self::key($path)] = [
+                'path'  => $path,
+                'name'  => 'Radio station ' . basename(dirname($path)),
+                'group' => 'Live',
+            ];
+        }
+
         return $files;
     }
 
