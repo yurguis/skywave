@@ -3533,6 +3533,8 @@ function createRadioView(radio, player) {
   // Removing a station is kept behind this rather than offered on every row, where the
   // button sits under the thumb that meant to choose the station.
   let editing = false;
+  let savedLogo = null;
+  const loggedLogos = new Set();
   // The server keeps the stations when it has a database to keep them in, so every browser
   // sees the same ones. When it has not, this browser keeps its own, as it used to.
   const serverKeeps = Array.isArray(radio.stations);
@@ -3681,6 +3683,9 @@ function createRadioView(radio, player) {
 
     listening = mine;
     station = null;
+    // The logo kept from an earlier listen, standing in until this one sends its own --
+    // which takes about a minute, and used to be a minute of looking at a grey square.
+    savedLogo = stations.find((saved) => saved.frequency === frequency)?.logo ?? null;
     // Whatever was playing when the page opened is not what is playing now.
     playing = null;
     frequencyInput.value = frequency.toFixed(1);
@@ -3700,9 +3705,28 @@ function createRadioView(radio, player) {
         if (next === null) listening = null;
         station = next;
         if (next?.station) remember(frequency, next.station);
+        // The server keeps the logo the moment it can serve it, so this is when the saved
+        // list gains one. Asked once: the station goes on sending it for as long as it is on.
+        if (next?.logo) keepLogo(frequency);
         render();
       },
     });
+  }
+
+  /**
+   * Pick up the logo the server has just filed, so the list and the next listen can use it.
+   *
+   * The station sends it over and over while it is on, and the list is only refetched for
+   * this once: without the guard every poll for the rest of the listen would refetch it.
+   */
+  function keepLogo(frequency) {
+    if (!serverKeeps || loggedLogos.has(frequency)) return;
+
+    const saved = stations.find((candidate) => candidate.frequency === frequency);
+    if (saved?.logo) return;
+
+    loggedLogos.add(frequency);
+    refreshStations();
   }
 
   /** Stations that have been heard, kept so they can be picked rather than typed. */
@@ -3750,6 +3774,7 @@ function createRadioView(radio, player) {
   /** Take the stations and the scan's progress from any answer that carries them. */
   function applyStations(body) {
     if (serverKeeps && Array.isArray(body.stations)) stations = body.stations;
+    if (listening) savedLogo = stations.find((s) => s.frequency === listening.frequency)?.logo ?? savedLogo;
     scan = body.scan ?? null;
     render();
   }
@@ -3834,6 +3859,8 @@ function createRadioView(radio, player) {
           onclick: () => listen(saved.frequency, 0),
           // A station found before it gave its name is still a station; it is its frequency.
         },
+          h('span', { class: `radio-station-logo${saved.logo ? '' : ' is-empty'}` },
+            saved.logo && h('img', { src: saved.logo, alt: '', loading: 'lazy' })),
           h('b', {}, saved.frequency.toFixed(1)),
           h('span', { class: 'radio-station-name' }, saved.name ?? ''),
           chosen && h('span', { class: 'radio-bars', 'aria-hidden': 'true' },
@@ -3874,7 +3901,7 @@ function createRadioView(radio, player) {
 
   /** The artwork, who is on and what they are playing -- the reason the view exists. */
   function renderNowPlaying() {
-    const picture = station?.art ?? station?.logo ?? null;
+    const picture = station?.art ?? station?.logo ?? (listening ? savedLogo : null);
 
     artwork.replaceChildren(picture
       ? h('img', { src: picture, alt: station?.station ? `${station.station} artwork` : 'Station artwork' })

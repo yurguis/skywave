@@ -1438,7 +1438,7 @@ button.record.is-recording,
   flex: 1;
   min-width: 0;
   display: grid;
-  grid-template-columns: 52px minmax(0, 1fr) auto;
+  grid-template-columns: 30px 52px minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-5);
   padding: var(--space-4) var(--space-6);
@@ -1452,6 +1452,28 @@ button.record.is-recording,
 .radio-station-pick:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 9%, transparent); }
 .radio-station-pick b { font-size: 14px; font-variant-numeric: tabular-nums; }
 .radio-station[aria-current="true"] .radio-station-pick b { color: var(--accent); }
+/* The station's own logo where one has been kept, and a dot where none has, so the
+   frequencies stay in one column whether a row has a picture or not. */
+.radio-station-logo {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  background: var(--surface);
+}
+.radio-station-logo img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.radio-station-logo.is-empty { background: none; }
+.radio-station-logo.is-empty::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+}
+
 .radio-station-name { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .radio-station[aria-current="true"] .radio-station-name { color: var(--text); }
 .radio-station-pick:disabled { opacity: 1; cursor: default; }

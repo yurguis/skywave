@@ -31,6 +31,7 @@ use Skywave\Hdhomerun\StreamAnalyzer;
 use Skywave\Hdhomerun\StreamProgram;
 use Skywave\Hdhomerun\Tuner;
 use Skywave\Radio\Receiver;
+use Skywave\Radio\StationLogos;
 use Skywave\Radio\RtlTcpClient;
 use Skywave\Radio\ScanJobs;
 use Skywave\Radio\Scanner;
@@ -915,9 +916,33 @@ class Api
     private function describeStations(): array
     {
         return [
-            'stations' => $this->stations === null ? null : $this->stations->all(),
+            'stations' => $this->stations === null ? null : self::withLogos($this->stations->all()),
             'scan'     => $this->scans === null ? null : $this->scans->status(),
         ];
+    }
+
+    /**
+     * Mark the stations whose logo is already on disk.
+     *
+     * Which ones have one is the server's business: a page that guessed would ask for
+     * eighteen pictures and be told no about most of them, over and over.
+     *
+     * @param list<array<string, mixed>> $stations
+     * @return list<array<string, mixed>>
+     */
+    private static function withLogos(array $stations): array
+    {
+        $logos = StationLogos::fromEnvironment();
+
+        return array_map(static function (array $station) use ($logos): array {
+            $frequency = $station['frequency'] ?? null;
+
+            $station['logo'] = is_numeric($frequency) && $logos->pathFor((float) $frequency) !== null
+                ? '/radio-logo/' . number_format((float) $frequency, 1, '.', '')
+                : null;
+
+            return $station;
+        }, $stations);
     }
 
     /**
@@ -980,7 +1005,14 @@ class Api
             throw new ApiException('There is no database to keep stations in', 404);
         }
 
-        return ['removed' => $this->stations->remove($frequency)] + $this->describeStations();
+        $removed = $this->stations->remove($frequency);
+
+        // A station nobody keeps has no logo worth keeping either.
+        if ($removed) {
+            StationLogos::fromEnvironment()->forget($frequency);
+        }
+
+        return ['removed' => $removed] + $this->describeStations();
     }
 
     /**

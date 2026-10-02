@@ -13,6 +13,7 @@ use Skywave\Hdhomerun\Tuner;
 use Skywave\Platform;
 use Skywave\Radio\Listener;
 use Skywave\Radio\Receiver;
+use Skywave\Radio\StationLogos;
 
 /**
  * Live playback sessions: one ffmpeg process per device, tuner, channel and program,
@@ -47,6 +48,7 @@ class LiveStreams
     private const AUDIO_CHECK_SECONDS = 1.5;
 
     private string $directory;
+    private ?StationLogos $stationLogos = null;
     private int $maxStreams;
     private int $viewerTimeout;
     /** @var int[] picture heights, tallest first */
@@ -409,6 +411,31 @@ class LiveStreams
      * the picture it has just been told to show. What is being refused is a name that is a
      * path -- a separator, a climb upwards, anything that is not a picture -- and it still is.
      */
+    /**
+     * @param array<string, mixed> $session
+     */
+    private function rememberLogo(array $session, string $path): void
+    {
+        $radio     = $session['radio'] ?? null;
+        $frequency = is_array($radio) ? ($radio['frequency'] ?? null) : null;
+        $program   = is_array($radio) ? ($radio['program'] ?? 0) : null;
+
+        if (!is_numeric($frequency) || !is_numeric($program)) {
+            return;
+        }
+
+        try {
+            $this->logos()->remember((float) $frequency, (int) $program, $path);
+        } catch (RuntimeException) {
+            // A logo that cannot be kept is not worth failing a status poll over.
+        }
+    }
+
+    private function logos(): StationLogos
+    {
+        return $this->stationLogos ??= StationLogos::fromEnvironment();
+    }
+
     public function resolvePicture(string $id, string $file): ?string
     {
         if (!self::isValidId($id) || !preg_match('/^\d+_[A-Za-z0-9][A-Za-z0-9._$-]*\.(jpe?g|png)$/i', $file)) {
@@ -810,10 +837,18 @@ class LiveStreams
         // A picture is named as soon as the station finishes sending it, and offered only
         // once it can be served.
         foreach (['art', 'logo'] as $picture) {
-            $file              = $station[$picture] ?? null;
-            $station[$picture] = is_string($file) && $this->resolvePicture($session['id'], $file) !== null
-                ? "/radio/{$session['id']}/" . rawurlencode($file)
-                : null;
+            $file = $station[$picture] ?? null;
+            $path = is_string($file) ? $this->resolvePicture($session['id'], $file) : null;
+
+            // The logo goes somewhere it will outlive the session, so the next listen can
+            // draw it before the station has got round to sending it again.
+            if ($picture === 'logo' && $path !== null) {
+                $this->rememberLogo($session, $path);
+            }
+
+            $station[$picture] = $path === null
+                ? null
+                : "/radio/{$session['id']}/" . rawurlencode((string) $file);
         }
 
         // The traffic maps, on the same terms: a map the station has finished drawing and
