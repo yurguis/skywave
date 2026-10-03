@@ -1775,7 +1775,20 @@ button.record.is-recording,
 .recorded-when b { display: block; font-weight: 600; }
 .recorded-when .muted { font-size: 11.5px; }
 
-.recorded-what { min-width: 0; display: grid; gap: 2px; }
+.recorded-what { min-width: 0; display: flex; align-items: flex-start; gap: var(--space-5); }
+.recorded-lines { min-width: 0; flex: 1; display: grid; gap: 2px; }
+
+/* The poster the recording was made with. A row without one keeps the space, so the titles
+   beside them stay in a line. */
+.recorded-what .art,
+.recorded-show-head .art {
+  width: 38px;
+  aspect-ratio: 2 / 3;
+  flex: none;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--surface);
+}
 .recorded-title { font-size: 14.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .recorded-desc { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .recorded-facts {
@@ -1809,7 +1822,7 @@ button.record.is-recording,
 .recorded-show { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); overflow: hidden; }
 .recorded-show-head {
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr);
+  grid-template-columns: 16px 38px minmax(0, 1fr);
   align-items: center;
   gap: var(--space-5);
   width: 100%;

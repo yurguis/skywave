@@ -3129,6 +3129,7 @@ function createRecordingsView(device, player) {
           onclick: () => { if (open) opened.delete(title); else opened.add(title); render(); },
         },
           h('span', { class: 'recorded-chevron', 'aria-hidden': 'true' }, '›'),
+          recordingArt(latest),
           h('span', { class: 'recorded-show-name' },
             h('b', {}, title),
             h('span', { class: 'muted' },
@@ -3158,19 +3159,23 @@ function createRecordingsView(device, player) {
     return h('div', { class: `recorded-row${status === 'recording' ? ' is-live' : ''}` },
       when,
       h('span', { class: 'recorded-what' },
-        under === 'show'
-          ? (recording.description ? h('span', { class: 'recorded-desc' }, recording.description) : null)
-          : h('span', { class: 'recorded-title' }, recording.title),
-        under !== 'show' && recording.description
-          ? h('span', { class: 'recorded-desc' }, recording.description)
-          : null,
-        h('span', { class: 'recorded-facts' },
-          h('span', {}, facts),
-          status !== 'done' && h('span', { class: `badge${status === 'recording' ? ' locked' : ''}` }, status),
-          ...recordingBadges(recording)),
-        recording.status === 'recording' ? progressFor(recording) : null,
-        recording.error && h('span', { class: 'muted' }, recording.error),
-        convertControl(recording)),
+        // Inside a show the poster is on the card above and the same for every episode, so
+        // it is shown once there rather than down the whole list.
+        under === 'show' ? null : recordingArt(recording),
+        h('span', { class: 'recorded-lines' },
+          under === 'show'
+            ? (recording.description ? h('span', { class: 'recorded-desc' }, recording.description) : null)
+            : h('span', { class: 'recorded-title' }, recording.title),
+          under !== 'show' && recording.description
+            ? h('span', { class: 'recorded-desc' }, recording.description)
+            : null,
+          h('span', { class: 'recorded-facts' },
+            h('span', {}, facts),
+            status !== 'done' && h('span', { class: `badge${status === 'recording' ? ' locked' : ''}` }, status),
+            ...recordingBadges(recording)),
+          recording.status === 'recording' ? progressFor(recording) : null,
+          recording.error && h('span', { class: 'muted' }, recording.error),
+          convertControl(recording))),
       h('span', { class: 'recorded-acts' }, ...recordingActions(recording)),
     );
   }
