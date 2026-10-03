@@ -1705,3 +1705,135 @@ button.record.is-recording,
 /* While a tuner is being found. The row keeps its shape -- only the heading says so. */
 .channel-row[aria-busy="true"] .channel-title { color: var(--accent); }
 .channel-row[aria-busy="true"] { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+
+/* Recorded, grouped.
+   It was the last table in the app, and the one the data suited least: a column for a date
+   that every row in a day repeated, and eleven rows carrying the same programme's name.
+   The day or the show becomes a heading, and what is left of a row is when it was on, what
+   it was, and what can be done with it. */
+.recorded-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-6);
+  font-size: 12.5px;
+}
+.recorded-spacer { flex: 1; }
+.recorded-count { font-weight: 600; color: var(--muted); }
+.recorded-empty { margin: 0; padding: var(--space-8) 0; font-size: 13px; }
+
+.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-control); overflow: hidden; }
+.segmented button {
+  min-height: var(--control-h);
+  padding: 0 var(--space-6);
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+}
+.segmented button:last-child { border-right: 0; }
+.segmented button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+.segmented button:not([aria-pressed="true"]):hover { background: var(--surface-2); color: var(--text); }
+
+.recorded-list { display: grid; gap: var(--space-3); }
+
+.recorded-day {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin: var(--space-6) 0 0;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.recorded-day .muted { font-weight: 600; letter-spacing: 0; text-transform: none; font-variant-numeric: tabular-nums; }
+.recorded-list > .recorded-day:first-child { margin-top: 0; }
+
+.recorded-group { display: grid; }
+
+.recorded-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-6);
+  padding: var(--space-5) var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.recorded-row:last-child { border-bottom: 0; }
+.recorded-row.is-live { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+
+.recorded-when { font-size: 13px; font-variant-numeric: tabular-nums; min-width: 0; }
+.recorded-when b { display: block; font-weight: 600; }
+.recorded-when .muted { font-size: 11.5px; }
+
+.recorded-what { min-width: 0; display: grid; gap: 2px; }
+.recorded-title { font-size: 14.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recorded-desc { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recorded-facts {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.recorded-acts { display: flex; align-items: center; gap: var(--space-3); }
+.recorded-icon {
+  width: var(--tap-min);
+  height: var(--tap-min);
+  flex: none;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+  color: var(--text);
+}
+.recorded-icon svg { width: 17px; height: 17px; fill: currentColor; }
+.recorded-icon:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.recorded-icon.is-play { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.recorded-icon.is-danger:hover:not(:disabled) { border-color: var(--red); color: var(--red); }
+.recorded-icon[aria-busy="true"] { opacity: .55; }
+
+/* A show and the episodes it holds. */
+.recorded-show { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); overflow: hidden; }
+.recorded-show-head {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-5);
+  width: 100%;
+  min-height: var(--tap-min);
+  padding: var(--space-5) var(--space-6);
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+}
+.recorded-show-head:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.recorded-chevron { color: var(--muted); font-size: 16px; line-height: 1; transition: transform 180ms ease; }
+.recorded-show.is-open .recorded-chevron { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .recorded-chevron { transition: none; } }
+
+.recorded-show-name { min-width: 0; display: grid; gap: 1px; }
+.recorded-show-name b { font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recorded-show-name .muted { font-size: 12px; font-variant-numeric: tabular-nums; }
+
+.recorded-episodes { display: none; border-top: 1px solid var(--border); padding: 0 var(--space-6); }
+.recorded-show.is-open .recorded-episodes { display: block; }
+
+@media (max-width: 620px) {
+  .recorded-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: var(--space-2); }
+  .recorded-when { grid-column: 1 / -1; display: flex; gap: var(--space-4); align-items: baseline; }
+  .recorded-when b { display: inline; }
+}
