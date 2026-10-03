@@ -42,6 +42,11 @@ while something is being recorded.
 
 ![The recordings tab, listing one recording in progress and four finished](docs/recordings.png)
 
+HD Radio, where a dongle is set up: the artwork the station sends, what is playing, its
+subchannels, and how strong the signal is. See [HD Radio](#hd-radio) for what it needs.
+
+![The HD Radio view, with station artwork, the song playing and a signal meter](docs/radio.png)
+
 ## HDHomeRun
 
 A pure PHP client for HDHomeRun tuners lives in `src/Hdhomerun/`: discovery, get/set
