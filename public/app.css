@@ -1684,3 +1684,7 @@ button.record.is-recording,
   .channel-tags { grid-column: 2 / -1; }
   .channel-bar { max-width: none; }
 }
+
+/* While a tuner is being found. The row keeps its shape -- only the heading says so. */
+.channel-row[aria-busy="true"] .channel-title { color: var(--accent); }
+.channel-row[aria-busy="true"] { background: color-mix(in srgb, var(--accent) 9%, transparent); }

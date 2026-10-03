@@ -2123,6 +2123,9 @@ function createChannelsView(device, player) {
       ? `Watch ${channel.virtual} ${channel.name}`
       : `${channel.virtual} ${channel.name} is encrypted`;
 
+    const heading = h('span', { class: 'channel-title' },
+      showing?.title ?? (playable ? 'No guide data' : 'Encrypted'));
+
     const button = h('button', {
       type: 'button',
       class: 'channel-row',
@@ -2132,6 +2135,13 @@ function createChannelsView(device, player) {
         host,
         tunerCount: device.tunerCount,
         player,
+        // Only the heading changes: the row is a grid of elements, and rewriting the whole
+        // control would take the logo, the number and the progress with it.
+        onBusy: (busy) => {
+          heading.textContent = busy
+            ? 'Finding a tuner…'
+            : (showing?.title ?? (playable ? 'No guide data' : 'Encrypted'));
+        },
       }),
     },
       h('span', { class: `channel-logo${channel.logo ? '' : ' is-empty'}` },
@@ -2144,7 +2154,7 @@ function createChannelsView(device, player) {
         h('b', {}, channel.virtual),
         h('span', { class: 'channel-call' }, channel.name ?? '')),
       h('span', { class: 'channel-on' },
-        h('span', { class: 'channel-title' }, showing?.title ?? (playable ? 'No guide data' : 'Encrypted')),
+        heading,
         showing && h('span', { class: 'channel-when' }, `${showing.through}% through · ${showing.left} min left`),
         showing && h('span', { class: 'channel-bar' }, h('i', { style: `width: ${showing.through}%` }))),
       h('span', { class: 'channel-tags' },
@@ -2174,10 +2184,13 @@ function createChannelsView(device, player) {
  * can watch the same channel. A tuner merely left on a channel is free, since watching
  * retunes it anyway.
  */
-async function watchOnATuner(channel, button, { host, tunerCount, player, before }) {
-  const label = button.textContent;
+async function watchOnATuner(channel, button, { host, tunerCount, player, before, onBusy }) {
+  // Never the control's own text: a caller whose button holds elements rather than a word
+  // would have them replaced by the flat string they happened to read as. What "busy"
+  // looks like belongs to the caller, which is the only one that knows what it built.
   button.disabled = true;
-  button.textContent = 'Finding a tuner…';
+  button.setAttribute('aria-busy', 'true');
+  onBusy?.(true);
 
   try {
     const tuners = (await Promise.all(Array.from({ length: tunerCount }, (_, index) =>
@@ -2218,15 +2231,16 @@ async function watchOnATuner(channel, button, { host, tunerCount, player, before
     return null;
   } finally {
     button.disabled = Boolean(channel.encrypted);
-    button.textContent = label;
+    button.removeAttribute('aria-busy');
+    onBusy?.(false);
   }
 }
 
 /** The same, for a station delivered over the internet: no tuner is involved at all. */
-async function watchAtsc3Channel(channel, button, { host, player, before }) {
-  const label = button.textContent;
+async function watchAtsc3Channel(channel, button, { host, player, before, onBusy }) {
   button.disabled = true;
-  button.textContent = '…';
+  button.setAttribute('aria-busy', 'true');
+  onBusy?.(true);
 
   try {
     before?.();
@@ -2242,7 +2256,8 @@ async function watchAtsc3Channel(channel, button, { host, player, before }) {
     showError(error);
   } finally {
     button.disabled = false;
-    button.textContent = label;
+    button.removeAttribute('aria-busy');
+    onBusy?.(false);
   }
 }
 
@@ -2713,17 +2728,27 @@ function createGuideView(device, player) {
   }
 
   function watchAtsc3(channel, button) {
+    const label = button.textContent;
+
     // Reachable from the details modal as well as the row. The player sits behind the
     // modal, which would otherwise stay up and keep the page inert.
-    return watchAtsc3Channel(channel, button, { host, player, before: () => details.close() });
+    return watchAtsc3Channel(channel, button, {
+      host,
+      player,
+      before: () => details.close(),
+      onBusy: (busy) => { button.textContent = busy ? '…' : label; },
+    });
   }
 
   function watch(channel, button) {
+    const label = button.textContent;
+
     return watchOnATuner(channel, button, {
       host,
       tunerCount: device.tunerCount,
       player,
       before: () => { refreshTuners(); details.close(); },
+      onBusy: (busy) => { button.textContent = busy ? 'Finding a tuner…' : label; },
     });
   }
 
