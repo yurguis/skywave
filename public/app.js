@@ -19,6 +19,8 @@ const LANGUAGE_NAMES = {
 const QUALITY_STORAGE_KEY = 'hdhomerun.quality';
 const RADIO_STATIONS_STORAGE_KEY = 'skywave.radioStations';
 const RADIO_FREQUENCY_STORAGE_KEY = 'skywave.radioFrequency';
+const RECORDED_GROUP_KEY = 'skywave.recordedGroup';
+const RECORDED_SORT_KEY = 'skywave.recordedSort';
 /** The radio's place in the device list. Not an address, so it can never be mistaken for one. */
 const RADIO_HOST = 'radio';
 const GUIDE_WINDOW_HOURS = 4;
@@ -662,6 +664,8 @@ const ICON_PATHS = {
   captions: 'M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1zm7 0h-1.5v-.5h-2v3h2V13H18v1a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1z',
   record: 'M12 6a6 6 0 1 0 0 12a6 6 0 1 0 0-12z',
   stop: 'M6 6h12v12H6z',
+  download: 'M11 3h2v8h3.5L12 16.5 7.5 11H11zM5 18h14v2H5z',
+  trash: 'M9 3h6l1 2h4v2H4V5h4zM6 9h12l-1 11a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1z',
   back: 'M11.75 18V6l-8.5 6 8.5 6zm.5-6 8.5 6V6l-8.5 6z',
   forward: 'M12.25 6v12l8.5-6L12.25 6zM3.25 18l8.5-6L3.25 6v12z',
   settings: 'M19.4 13a7.8 7.8 0 0 0 0-2l2.1-1.6a.5.5 0 0 0 .1-.6l-2-3.5a.5.5 0 0 0-.6-.2l-2.5 1a7.3 7.3 0 0 0-1.7-1l-.4-2.6a.5.5 0 0 0-.5-.4h-4a.5.5 0 0 0-.5.4l-.4 2.6a7.3 7.3 0 0 0-1.7 1l-2.5-1a.5.5 0 0 0-.6.2l-2 3.5a.5.5 0 0 0 .1.6L4.6 11a7.8 7.8 0 0 0 0 2l-2.1 1.6a.5.5 0 0 0-.1.6l2 3.5a.5.5 0 0 0 .6.2l2.5-1a7.3 7.3 0 0 0 1.7 1l.4 2.6a.5.5 0 0 0 .5.4h4a.5.5 0 0 0 .5-.4l.4-2.6a7.3 7.3 0 0 0 1.7-1l2.5 1a.5.5 0 0 0 .6-.2l2-3.5a.5.5 0 0 0-.1-.6zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z',
@@ -2662,9 +2666,7 @@ function createGuideView(device, player) {
   // Every recording action ends the same way: reload the recordings, then redraw so the
   // button reflects what is now true.
   async function recordingAction(path, options, button, busyLabel) {
-    const label = button.textContent;
-    button.disabled = true;
-    button.textContent = busyLabel;
+    const done = markBusy(button, busyLabel);
 
     try {
       await api(path, options);
@@ -2672,8 +2674,7 @@ function createGuideView(device, player) {
       render();
     } catch (error) {
       showError(error);
-      button.disabled = false;
-      button.textContent = label;
+      done();
     }
   }
 
@@ -2781,6 +2782,29 @@ function createGuideView(device, player) {
 // ---------------------------------------------------------------------------
 // Recordings
 
+/**
+ * Show a control as busy without destroying what it is made of.
+ *
+ * A button holding a word can say so in its own text. One holding an icon cannot: writing
+ * "Starting…" over it replaces the picture, and writing "the old text" back leaves the
+ * string that picture read as -- which is how a channel row once collapsed into one line
+ * of run-together words. So a button with elements inside is marked rather than rewritten.
+ */
+function markBusy(button, busyLabel) {
+  const wordy = button.children.length === 0;
+  const label = wordy ? button.textContent : null;
+
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  if (wordy && busyLabel) button.textContent = busyLabel;
+
+  return () => {
+    button.disabled = false;
+    button.removeAttribute('aria-busy');
+    if (wordy && busyLabel) button.textContent = label;
+  };
+}
+
 function createRecordingsView(device, player) {
   const host = device.host;
   let data = null;
@@ -2823,8 +2847,25 @@ function createRecordingsView(device, player) {
   const recordedFilter  = filterBox('recorded', 'Filter by show or channel');
   const scheduledHead   = h('tr', {});
   const scheduledBody   = h('tbody', {});
-  const recordedHead    = h('tr', {});
-  const recordedBody    = h('tbody', {});
+
+  // Recorded is grouped rather than tabulated: eleven of twenty here are the same show, and
+  // a table spent a column on a date that every row in a day repeats.
+  let grouping = loadSetting(RECORDED_GROUP_KEY) === 'show' ? 'show' : 'date';
+  let order    = loadSetting(RECORDED_SORT_KEY) === 'oldest' ? 'oldest' : 'newest';
+  const opened = new Set();
+
+  const recordedCount = h('span', { class: 'recorded-count' });
+  const recordedList  = h('div', { class: 'recorded-list' });
+  const groupButtons  = h('span', { class: 'segmented', role: 'group', 'aria-label': 'Group recordings by' },
+    ...[['date', 'Date'], ['show', 'Show']].map(([value, label]) => h('button', {
+      type: 'button',
+      onclick: () => { grouping = value; saveSetting(RECORDED_GROUP_KEY, value); render(); },
+    }, label)));
+  const sortButtons = h('span', { class: 'segmented', role: 'group', 'aria-label': 'Sort recordings' },
+    ...[['newest', 'Newest'], ['oldest', 'Oldest']].map(([value, label]) => h('button', {
+      type: 'button',
+      onclick: () => { order = value; saveSetting(RECORDED_SORT_KEY, value); render(); },
+    }, label)));
 
   const root = h('div', { class: 'view', hidden: true },
     h('section', { class: 'card' },
@@ -2839,10 +2880,15 @@ function createRecordingsView(device, player) {
         h('table', { class: 'list-table' }, h('thead', {}, scheduledHead), scheduledBody)),
     ),
     seriesCard,
-    h('section', { class: 'card' },
-      h('div', { class: 'guide-toolbar' }, h('h3', {}, 'Recorded'), recordedFilter),
-      h('div', { class: 'table-wrap' },
-        h('table', { class: 'list-table' }, h('thead', {}, recordedHead), recordedBody)),
+    h('section', { class: 'card recorded' },
+      h('div', { class: 'guide-toolbar' }, h('h3', {}, 'Recorded', recordedCount), recordedFilter),
+      // Each label travels with the buttons it names: loose in one row they wrapped apart,
+      // leaving "Sort" at the end of one line and its buttons at the start of the next.
+      h('div', { class: 'recorded-controls' },
+        h('span', { class: 'recorded-pair' }, h('span', { class: 'muted' }, 'Group'), groupButtons),
+        h('span', { class: 'recorded-spacer' }),
+        h('span', { class: 'recorded-pair' }, h('span', { class: 'muted' }, 'Sort'), sortButtons)),
+      recordedList,
     ),
   );
 
@@ -2984,96 +3030,185 @@ function createRecordingsView(device, player) {
       ),
     )));
 
-    fillTable({
-      which: 'recorded',
-      head: recordedHead,
-      body: recordedBody,
-      items: data.recordings,
-      empty: 'Nothing recorded yet.',
-      columns: [
-        {
-          key: 'when',
-          label: 'Date',
-          class: 'cell-when',
-          sort: (recording) => recording.startedAt,
-          cell: (recording) => `${dayFormat.format(recording.startedAt * 1000)}, ${timeFormat.format(recording.startedAt * 1000)}`,
-        },
-        {
-          key: 'title',
-          label: 'Show',
-          class: 'cell-title',
-          sort: (recording) => recording.title.toLowerCase(),
-          search: (recording) => recording.title,
-          cell: (recording) => h('span', { class: 'cell-show' },
-            recordingArt(recording),
-            h('span', { class: 'name' },
-              h('span', { class: 'title' }, recording.title, ...recordingBadges(recording)),
-              recording.status === 'recording' ? progressFor(recording) : null,
-              recording.error && h('span', { class: 'muted' }, recording.error),
-              describeCopy(recording) && h('span', { class: 'muted' }, describeCopy(recording).replace(/^ · /, '')))),
-        },
-        {
-          key: 'channel',
-          label: 'Channel',
-          class: 'drop-narrow',
-          sort: (recording) => virtualKey(recording.virtual),
-          search: (recording) => `${recording.virtual} ${recording.channelName}`,
-          cell: (recording) => `${recording.virtual} ${recording.channelName}`,
-        },
-        {
-          key: 'length',
-          label: 'Length',
-          class: 'cell-length drop-narrow',
-          sort: (recording) => lengthOf(recording),
-          cell: (recording) => lengthOf(recording) === 0 ? '—' : formatDuration(lengthOf(recording)),
-        },
-        {
-          key: 'size',
-          label: 'Size',
-          class: 'cell-size drop-mid',
-          sort: (recording) => recording.bytes,
-          cell: (recording) => formatBytes(recording.bytes),
-        },
-        {
-          key: 'status',
-          label: 'Status',
-          sort: (recording) => recording.status,
-          // The recorder finishes a stop on its next pass, a few seconds later.
-          cell: (recording) => {
-            const status = recording.status === 'recording' && recording.stopRequested ? 'stopping' : recording.status;
+    renderRecorded(data.recordings);
+  }
 
-            return status === 'done'
-              ? h('span', { class: 'muted' }, 'done')
-              : h('span', { class: `badge${status === 'recording' ? ' locked' : ''}` }, status);
-          },
-        },
-        {
-          key: 'actions',
-          label: '',
-          class: 'cell-actions',
-          cell: (recording) => h('span', { class: 'actions' }, recording.status === 'recording'
-            ? h('button', {
-              type: 'button',
-              class: 'secondary',
-              onclick: (clickEvent) => act(`/api/recordings/${recording.id}/stop`, { method: 'POST' }, clickEvent.currentTarget, 'Stopping…'),
-            }, 'Stop')
-            : [
-              recording.bytes > 0 && h('button', {
-                type: 'button',
-                class: 'watch',
-                onclick: (clickEvent) => playRecording(recording, clickEvent.currentTarget),
-              }, '▶ Play'),
-              recording.bytes > 0 && downloadControl(recording),
-              convertControl(recording),
-              h('button', {
-                type: 'button',
-                class: 'secondary',
-                onclick: (clickEvent) => remove(recording, clickEvent.currentTarget),
-              }, 'Delete'),
-            ]),
-        },
-      ],
+  /**
+   * The recordings, grouped.
+   *
+   * By the day they were made, which is how you remember recording them -- the date
+   * becomes a heading rather than a column every row in that day repeats. Or by show,
+   * which is what a library of series actually is: eleven of the twenty here are the same
+   * programme, and collapsed they are one line with its episodes inside.
+   */
+  function renderRecorded(recordings) {
+    for (const button of groupButtons.children) {
+      button.setAttribute('aria-pressed', String(button.textContent.toLowerCase() === grouping));
+    }
+
+    for (const button of sortButtons.children) {
+      button.setAttribute('aria-pressed', String(button.textContent.toLowerCase() === order));
+    }
+
+    const needle = filters.recorded.trim().toLowerCase();
+    const matching = needle === ''
+      ? recordings
+      : recordings.filter((recording) => `${recording.title} ${recording.channelName ?? ''} ${recording.virtual ?? ''} ${recording.description ?? ''}`
+        .toLowerCase().includes(needle));
+
+    const bytes = matching.reduce((total, recording) => total + (recording.bytes ?? 0), 0);
+
+    recordedCount.textContent = recordings.length === 0
+      ? ''
+      : ` · ${matching.length} · ${formatBytes(bytes)}`;
+
+    if (matching.length === 0) {
+      recordedList.replaceChildren(h('p', { class: 'muted recorded-empty' },
+        recordings.length === 0 ? 'Nothing recorded yet.' : 'Nothing matches that filter.'));
+
+      return;
+    }
+
+    recordedList.replaceChildren(...(grouping === 'show'
+      ? byShow(matching)
+      : byDay(matching)));
+  }
+
+  function newestFirst(list) {
+    return [...list].sort((first, second) => (order === 'newest'
+      ? second.startedAt - first.startedAt
+      : first.startedAt - second.startedAt));
+  }
+
+  function byDay(recordings) {
+    const days = new Map();
+
+    for (const recording of newestFirst(recordings)) {
+      const day = dayFormat.format(recording.startedAt * 1000);
+      if (!days.has(day)) days.set(day, []);
+      days.get(day).push(recording);
+    }
+
+    return [...days].flatMap(([day, list]) => [
+      h('p', { class: 'recorded-day' },
+        h('span', {}, day),
+        h('span', { class: 'muted' },
+          `${list.length} · ${formatBytes(list.reduce((total, one) => total + (one.bytes ?? 0), 0))}`)),
+      h('div', { class: 'recorded-group' }, ...list.map((recording) => recordingRow(recording, 'date'))),
+    ]);
+  }
+
+  function byShow(recordings) {
+    const shows = new Map();
+
+    for (const recording of recordings) {
+      if (!shows.has(recording.title)) shows.set(recording.title, []);
+      shows.get(recording.title).push(recording);
+    }
+
+    const ordered = [...shows].sort((first, second) => {
+      const latest = (list) => Math.max(...list.map((one) => one.startedAt));
+
+      return order === 'newest' ? latest(second[1]) - latest(first[1]) : latest(first[1]) - latest(second[1]);
     });
+
+    return ordered.map(([title, list]) => {
+      // One recording is not a group worth opening; it is shown as itself.
+      if (list.length === 1) return h('div', { class: 'recorded-group' }, recordingRow(list[0], 'show-single'));
+
+      const open = opened.has(title);
+      const size = formatBytes(list.reduce((total, one) => total + (one.bytes ?? 0), 0));
+      const live = list.some((one) => one.status === 'recording');
+      const latest = newestFirst(list)[0];
+
+      return h('div', { class: `recorded-show${open ? ' is-open' : ''}` },
+        h('button', {
+          type: 'button',
+          class: 'recorded-show-head',
+          'aria-expanded': String(open),
+          onclick: () => { if (open) opened.delete(title); else opened.add(title); render(); },
+        },
+          h('span', { class: 'recorded-chevron', 'aria-hidden': 'true' }, '›'),
+          recordingArt(latest),
+          h('span', { class: 'recorded-show-name' },
+            h('b', {}, title),
+            h('span', { class: 'muted' },
+              `${list.length} recordings · ${size} · latest ${dayFormat.format(latest.startedAt * 1000)}`,
+              live ? ' · recording now' : '')),
+        ),
+        h('div', { class: 'recorded-episodes' }, ...newestFirst(list).map((recording) => recordingRow(recording, 'show'))),
+      );
+    });
+  }
+
+  /** One recording. Under a day the date is already said, so it leads with the time. */
+  function recordingRow(recording, under) {
+    const started = recording.startedAt * 1000;
+    const when = under === 'show'
+      ? h('span', { class: 'recorded-when' },
+        h('b', {}, dayFormat.format(started)), h('span', { class: 'muted' }, timeFormat.format(started)))
+      : h('span', { class: 'recorded-when' }, h('b', {}, timeFormat.format(started)));
+
+    const status = recording.status === 'recording' && recording.stopRequested ? 'stopping' : recording.status;
+    const facts = [
+      formatDuration(lengthOf(recording)),
+      recording.bytes ? formatBytes(recording.bytes) : null,
+      `${recording.virtual ?? ''} ${recording.channelName ?? ''}`.trim() || null,
+    ].filter(Boolean).join(' · ');
+
+    return h('div', { class: `recorded-row${status === 'recording' ? ' is-live' : ''}` },
+      when,
+      h('span', { class: 'recorded-what' },
+        // Inside a show the poster is on the card above and the same for every episode, so
+        // it is shown once there rather than down the whole list.
+        under === 'show' ? null : recordingArt(recording),
+        h('span', { class: 'recorded-lines' },
+          under === 'show'
+            ? (recording.description ? h('span', { class: 'recorded-desc' }, recording.description) : null)
+            : h('span', { class: 'recorded-title' }, recording.title),
+          under !== 'show' && recording.description
+            ? h('span', { class: 'recorded-desc' }, recording.description)
+            : null,
+          h('span', { class: 'recorded-facts' },
+            h('span', {}, facts),
+            status !== 'done' && h('span', { class: `badge${status === 'recording' ? ' locked' : ''}` }, status),
+            ...recordingBadges(recording)),
+          recording.status === 'recording' ? progressFor(recording) : null,
+          recording.error && h('span', { class: 'muted' }, recording.error),
+          convertControl(recording))),
+      h('span', { class: 'recorded-acts' }, ...recordingActions(recording)),
+    );
+  }
+
+  /** Play, keep, remove -- as icons, so a row stays one row. */
+  function recordingActions(recording) {
+    if (recording.status === 'recording') {
+      return [h('button', {
+        type: 'button',
+        class: 'recorded-icon',
+        title: 'Stop recording',
+        'aria-label': 'Stop recording',
+        onclick: (clickEvent) => act(`/api/recordings/${recording.id}/stop`, { method: 'POST' }, clickEvent.currentTarget, '…'),
+      }, icon('stop'))];
+    }
+
+    return [
+      recording.bytes > 0 && h('button', {
+        type: 'button',
+        class: 'recorded-icon is-play',
+        title: 'Play',
+        'aria-label': `Play ${recording.title}`,
+        onclick: (clickEvent) => playRecording(recording, clickEvent.currentTarget),
+      }, icon('play')),
+      recording.bytes > 0 && downloadControl(recording),
+      h('button', {
+        type: 'button',
+        class: 'recorded-icon is-danger',
+        title: 'Delete',
+        'aria-label': `Delete ${recording.title}`,
+        onclick: (clickEvent) => remove(recording, clickEvent.currentTarget),
+      }, icon('trash')),
+    ].filter(Boolean);
   }
 
   /** How long a recording ran. A running one is still growing, so it is measured to now. */
@@ -3193,12 +3328,20 @@ function createRecordingsView(device, player) {
    * constantly for something almost nobody clicks.
    */
   function downloadControl(recording) {
+    // A recording kept in both forms offers a choice of which to save, and one kept in a
+    // single form just saves. The page already knows which it is -- the converted copy is
+    // what makes the difference -- so the button can say so rather than looking identical
+    // and surprising you with a menu.
+    const choices = Boolean(recording.convertedPath);
+
     const button = h('button', {
       type: 'button',
-      class: 'secondary',
-      title: 'Save it to this device',
+      class: `recorded-icon${choices ? ' has-menu' : ''}`,
+      title: choices ? 'Save it to this device: choose a format' : 'Save it to this device',
+      'aria-label': choices ? `Download ${recording.title}, choose a format` : `Download ${recording.title}`,
+      'aria-haspopup': choices ? 'listbox' : null,
       onclick: () => offer(),
-    }, '⤓ Download');
+    }, icon('download'), choices ? h('span', { class: 'recorded-caret', 'aria-hidden': 'true' }) : null);
 
     async function offer() {
       button.disabled = true;
@@ -3239,8 +3382,19 @@ function createRecordingsView(device, player) {
           title: one.detail,
         }, `${one.name} · ${formatBytes(one.bytes)}`)));
 
+      // Sized to the button it stands in for, so the row does not jump when it opens.
       button.replaceWith(choice);
       choice.focus();
+
+      // Put the button back when the choice is made or abandoned, rather than leaving a
+      // dropdown sitting in a row of icons.
+      // Once a format is chosen the icon comes back, rather than leaving a dropdown parked
+      // in a row of icons. Clicking away leaves it open, as it always has: a blur listener
+      // was tried and did not fire dependably, and a control that sometimes closes itself
+      // is worse than one that waits.
+      choice.addEventListener('change', () => {
+        if (choice.isConnected) choice.replaceWith(button);
+      });
     }
 
     return button;
@@ -3314,9 +3468,7 @@ function createRecordingsView(device, player) {
   // A ts recording holds the broadcast as it was sent, which no browser can decode, so the
   // server converts it while you watch; an mp4 plays straight from the file.
   async function playRecording(recording, button) {
-    const label = button.textContent;
-    button.disabled = true;
-    button.textContent = 'Starting…';
+    const done = markBusy(button, 'Starting…');
 
     try {
       const playback = await api(`/api/recordings/${recording.id}/play`, {
@@ -3328,8 +3480,7 @@ function createRecordingsView(device, player) {
     } catch (error) {
       showError(error);
     } finally {
-      button.disabled = false;
-      button.textContent = label;
+      done();
     }
   }
 
@@ -3387,17 +3538,14 @@ function createRecordingsView(device, player) {
   }
 
   async function act(path, options, button, busyLabel) {
-    const label = button.textContent;
-    button.disabled = true;
-    button.textContent = busyLabel;
+    const done = markBusy(button, busyLabel);
 
     try {
       await api(path, options);
       await load();
     } catch (error) {
       showError(error);
-      button.disabled = false;
-      button.textContent = label;
+      done();
     }
   }
 
