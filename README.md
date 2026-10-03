@@ -394,6 +394,21 @@ RADIO_DEVICE=0 PHP_CLI_SERVER_WORKERS=4 php -S 0.0.0.0:8080 -t public public/ind
 or on the host while Skywave runs in a container that cannot be given the USB device. It
 serves one listener at a time, and so does a dongle opened directly.
 
+It also claims the dongle for as long as it runs, tuned or not, which leaves the stick
+powered and warm. There is no idle timeout and no way to have it started on demand: it
+binds its own socket, so launchd cannot hand it one. For a machine that listens now and
+then, start it when you want the radio and stop it when you are done:
+
+```bash
+tools/radio-dongle.sh start     # up, and waits until it is really listening
+tools/radio-dongle.sh status    # whether it is up, and whether anything is connected
+tools/radio-dongle.sh stop      # down, and the dongle is released
+```
+
+Worth knowing if you stop it yourself: `rtl_tcp` does not reliably answer a plain `TERM`.
+Left running, it holds the USB device, and the next start fails with `usb_claim_interface
+error -3` -- which names nothing that explains it. The script sends `KILL` for that reason.
+
 On Linux the dongle arrives already taken. The kernel sees an RTL2832U, loads the DVB-T
 driver it was sold as needing, and librtlsdr is then refused it -- `usb_claim_interface
 error -6`, or simply "device is already in use". Say once that the kernel should leave it
