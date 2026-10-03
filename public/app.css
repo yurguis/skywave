@@ -12,7 +12,28 @@
   --yellow: #ca8a04;
   --red: #dc2626;
   --neutral: #94a3b8;
+
+  /* Spacing. These are the steps the stylesheet already used -- naming them is what keeps a
+     34px control from turning up beside a 33px one. The 2px granularity is history rather
+     than an invitation: new work should reach for the wider steps first. */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 10px;
+  --space-6: 12px;
+  --space-7: 14px;
+  --space-8: 16px;
+  --space-9: 20px;
+
+  /* The height a button, select or input comes out at from the base padding below. Set it
+     explicitly anywhere a control inherits a different font size and lands a pixel short. */
+  --control-h: 34px;
+  /* What a finger needs. Applied on a coarse pointer, at the end of this file. */
+  --tap-min: 44px;
+
   --radius: 8px;
+  --radius-control: 6px;
   color-scheme: light;
 }
 
@@ -53,10 +74,10 @@ h4 { font-size: 14px; }
 button, select, input {
   font: inherit;
   color: inherit;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--border);
   background: var(--surface);
-  padding: 6px 10px;
+  padding: var(--space-3) var(--space-5);
 }
 
 button {
@@ -268,7 +289,12 @@ button:disabled { opacity: .55; cursor: progress; }
 }
 
 .programs button.program:hover:not(:disabled) { background: var(--surface-2); border-color: var(--border); }
-.programs button.program:hover:not(:disabled)::after { content: "Watch"; margin-left: auto; font-size: 11px; color: var(--accent); }
+/* Pointer only. A touch device cannot hover, so this label never appeared there -- and a tap
+   would have left it stuck on. The play marker beside the title is the affordance on touch,
+   and that one is always visible. */
+@media (hover: hover) {
+  .programs button.program:hover:not(:disabled)::after { content: "Watch"; margin-left: auto; font-size: 11px; color: var(--accent); }
+}
 .tuner .hint { margin: 0; font-size: 12.5px; }
 .controls button.watch { background: var(--green); border-color: var(--green); }
 .programs button.program:disabled { opacity: 1; cursor: default; color: var(--muted); }
@@ -692,7 +718,7 @@ button:disabled { opacity: .55; cursor: progress; }
 /* Logs */
 
 .log-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.log-source { min-width: 0; flex: 1 1 260px; }
+.log-source { min-width: 0; flex: 1 1 260px; min-height: var(--control-h); }
 .log-follow { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
 .log-detail { font-size: 12.5px; }
 .log-card { padding: 0; overflow: hidden; }
@@ -1120,7 +1146,12 @@ button.record.is-recording,
 .list-heading { display: grid; gap: 2px; min-width: 0; }
 
 .list-table { font-size: 13px; }
-.list-table th, .list-table td { padding: 8px 10px; vertical-align: middle; }
+.list-table th, .list-table td { padding: var(--space-4) var(--space-5); vertical-align: middle; }
+
+/* Controls here inherit the table's smaller type, which left them a pixel shorter than the
+   same button anywhere else. The height is stated rather than left to the font. */
+.list-table button:not(.sort),
+.list-table select { min-height: var(--control-h); }
 .list-table td:first-child, .list-table th:first-child { padding-left: 0; }
 .list-table td:last-child, .list-table th:last-child { padding-right: 0; }
 .list-table tbody tr:last-child td { border-bottom: 0; }
@@ -1211,3 +1242,62 @@ button.record.is-recording,
 .radio-now p { margin: 0; }
 .radio-signal { font-variant-numeric: tabular-nums; }
 .radio-error { margin: 0; color: var(--red); }
+
+/* Touch targets.
+   Scoped to a coarse pointer rather than a narrow width: a tablet is touched but is wider
+   than any breakpoint here, and 43 of these buttons measured under the 44px minimum at
+   768px. A narrow desktop window keeps the denser mouse sizing it had. */
+@media (pointer: coarse) {
+  /* Raising the token rather than adding rules. Anything set to --control-h grows with it,
+     so a more specific rule elsewhere cannot quietly out-rank the minimum -- which is what
+     happened when the table's controls were given their height separately. */
+  :root { --control-h: var(--tap-min); }
+
+  button,
+  select,
+  input,
+  [role="button"] { min-height: var(--tap-min); }
+
+  /* The player's overlay is the exception. Its buttons are deliberately 34, 48 and 60px
+     when the screen is small, and min-height wins over height whatever the source order,
+     so it is taken back off again here rather than listing every control above. */
+  .video-wrap button,
+  .video-wrap input { min-height: 0; }
+
+  /* Full width as well as full height: the press should land anywhere in the column
+     heading, not only on the label, which was 40px wide inside a wider cell. */
+  .list-table th .sort { width: 100%; }
+
+  /* Several of these hold one glyph and came out 33px wide -- the guide's time arrows,
+     which are how the schedule is moved on a phone, and the close button on the details
+     panel. Width is not given to the sort control above, which would widen its column. */
+  button.secondary { min-width: var(--tap-min); }
+
+  /* The checkbox itself stays the size the platform draws it. The label already toggles
+     it, so the label is what gets the target. */
+  .log-follow { display: inline-flex; align-items: center; gap: var(--space-3); min-height: var(--tap-min); }
+}
+
+/* Two round controls, 22px and 18px, that cannot simply be made bigger: the channel link
+   has to stay 18px or it makes the rows that have an application taller than the rows that
+   do not. So the target grows without the element growing -- a centred transparent box,
+   44px square, that takes the press. This is also what gives them their width on a touch
+   screen, where the rule above only reaches their height. Neither has an interactive
+   neighbour to take a press from.
+
+   The channel link ends up with about 40px of this reachable rather than the full 44: it
+   sits near the top of a cell whose overflow is hidden, which the channel name needs for
+   its ellipsis, so the last few pixels upwards are clipped. */
+.guide-empty-play,
+.channel-app { position: relative; }
+
+.guide-empty-play::after,
+.channel-app::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--tap-min);
+  height: var(--tap-min);
+  transform: translate(-50%, -50%);
+}
