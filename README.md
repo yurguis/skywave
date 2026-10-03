@@ -17,6 +17,11 @@ Start it with [Docker](#docker), or run it straight from PHP.
 
 ## Screenshots
 
+Channels, with what each one is showing and how far through it is. Pick one and a tuner
+is found for it; the Tuners tab keeps every meter and field for anyone who wants them.
+
+![The channels tab, listing stations with their logos and what is on now](docs/channels.png)
+
 Watching a channel. The overlay carries the station's logo, what is on now and what is
 next, a seek bar over the rewind window, and the controls for picture size, audio track,
 captions and recording.
@@ -36,6 +41,11 @@ Recordings, with one in progress. The dot on the tab pulses wherever you are in 
 while something is being recorded.
 
 ![The recordings tab, listing one recording in progress and four finished](docs/recordings.png)
+
+HD Radio, where a dongle is set up: the artwork the station sends, what is playing, its
+subchannels, and how strong the signal is. See [HD Radio](#hd-radio) for what it needs.
+
+![The HD Radio view, with station artwork, the song playing and a signal meter](docs/radio.png)
 
 ## HDHomeRun
 

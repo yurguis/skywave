@@ -790,7 +790,9 @@ details > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
 
 /* Tabs */
 
-.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); }
+/* Wraps rather than overflowing: a fifth tab does not fit beside the other four on a
+   phone, and a tab nobody can reach is worse than a tab on a second line. */
+.tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); border-bottom: 1px solid var(--border); }
 
 .tabs .tab {
   background: transparent;
@@ -1178,15 +1180,32 @@ button.record.is-recording,
 .list-table .cell-show .art { width: 34px; aspect-ratio: 2 / 3; border-radius: 3px; object-fit: cover; flex: none; }
 .list-table .cell-show .name { display: grid; gap: 2px; min-width: 0; }
 .list-table .cell-show .title { font-weight: 500; }
+/* The title takes whatever is left over.
+   Everything else here is either a date, a duration or a size, and all of them refuse to
+   wrap -- so an auto table satisfies them first and gives the title whatever remains,
+   which was eighty pixels and "The Tonight Show Starring Jimmy Fallon" one word to a
+   line. Asking for the whole width turns that round: the others still size to their
+   content and the title gets the rest. */
+.list-table .cell-title { width: 100%; min-width: 150px; }
+
 .list-table .cell-when { white-space: nowrap; }
 .list-table .cell-size, .list-table .cell-length { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .list-table .cell-actions { text-align: right; }
 .list-table .cell-actions > * { vertical-align: middle; }
 .list-table .actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 
-/* A narrow screen keeps what identifies a row and drops what can be inferred. */
-@media (max-width: 760px) {
+/* A narrow screen keeps what identifies a row and drops what can be inferred.
+   At 1100 rather than 760: the recorded table's seven columns want 689px and had 655 at
+   1024, so its buttons were clipped before anything was dropped. */
+@media (max-width: 1100px) {
   .list-table .drop-narrow { display: none; }
+}
+
+/* Size goes one step later than the channel and the length. Measured: with the sidebar
+   taking its share, the content column is 491px at 860, and date, show, size, status and
+   the buttons wanted 552 of it -- so the buttons were cut off at the edge. */
+@media (max-width: 950px) {
+  .list-table .drop-mid { display: none; }
 }
 
 @media (max-width: 520px) {
@@ -1609,3 +1628,80 @@ button.record.is-recording,
   clip-path: inset(50%);
   border: 0;
 }
+
+/* The channels view.
+   What is on, and a way to watch it. The row is the same shape the radio's station list
+   uses -- a fixed leading identifier, a flexible label, trailing state -- so the two
+   halves of the app read as one. The tuners view keeps every meter it ever had; this is
+   a way in, not a replacement for it. */
+.channels { padding: 0; overflow: hidden; }
+
+.channels-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  flex-wrap: wrap;
+  padding: var(--space-6) var(--space-7);
+  border-bottom: 1px solid var(--border);
+}
+.channels-head h4 { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.channels-count { font-weight: 600; }
+.channels-filter { flex: 1 1 200px; min-width: 0; }
+.channels-note { margin: 0; padding: var(--space-8) var(--space-7); font-size: 13px; }
+
+.channels-rows { max-height: min(62vh, 620px); overflow-y: auto; }
+
+.channel-row {
+  display: grid;
+  grid-template-columns: 34px 74px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-6);
+  width: 100%;
+  min-height: var(--tap-min);
+  padding: var(--space-5) var(--space-7);
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+}
+.channel-row:last-child { border-bottom: 0; }
+.channel-row:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.channel-row:disabled { opacity: .55; cursor: default; }
+
+.channel-logo {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-control);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.channel-logo img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.channel-logo.is-empty { background: none; }
+.channel-logo.is-empty::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--border); }
+
+.channel-id { min-width: 0; }
+.channel-id b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.channel-call { display: block; font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.channel-on { min-width: 0; }
+.channel-title { display: block; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.channel-when { display: block; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.channel-bar { display: block; height: 4px; max-width: 170px; margin-top: var(--space-3); border-radius: 2px; background: var(--surface-2); overflow: hidden; }
+.channel-bar i { display: block; height: 100%; background: var(--accent); }
+
+.channel-tags { display: flex; align-items: center; gap: var(--space-3); }
+
+@media (max-width: 620px) {
+  .channel-row { grid-template-columns: 30px 64px minmax(0, 1fr); row-gap: var(--space-3); padding: var(--space-5) var(--space-6); }
+  .channel-tags { grid-column: 2 / -1; }
+  .channel-bar { max-width: none; }
+}
+
+/* While a tuner is being found. The row keeps its shape -- only the heading says so. */
+.channel-row[aria-busy="true"] .channel-title { color: var(--accent); }
+.channel-row[aria-busy="true"] { background: color-mix(in srgb, var(--accent) 9%, transparent); }

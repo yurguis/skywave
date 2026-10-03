@@ -42,7 +42,8 @@ const state = {
   radioView: null,
 };
 
-const TAB_LABELS = { tuners: 'Tuners', guide: 'Guide', recordings: 'Recordings', logs: 'Logs' };
+const TAB_LABELS = {
+  channels: 'Channels', tuners: 'Tuners', guide: 'Guide', recordings: 'Recordings', logs: 'Logs' };
 /** Roughly ten hours of recording; below this the Recordings tab says so. */
 const LOW_SPACE_BYTES = 20e9;
 
@@ -340,6 +341,8 @@ function renderEmptyDetail() {
   state.player = null;
   state.guideView?.destroy();
   state.guideView = null;
+  state.channelsView?.destroy();
+  state.channelsView = null;
   state.recordingsView?.destroy();
   state.recordingsView = null;
   state.radioView?.destroy();
@@ -369,9 +372,12 @@ function selectDevice(host) {
 
   state.recordingsView?.destroy();
   state.recordingsView = createRecordingsView(device, state.player);
+  state.channelsView?.destroy();
+  state.channelsView = createChannelsView(device, state.player);
   state.logsView = createLogsView();
 
   const views = {
+    channels: state.channelsView.root,
     tuners: h('div', { class: 'view' }, h('div', { class: 'tuners' }, state.tunerCards.map((card) => card.root)), analysisPanel),
     guide: state.guideView.root,
     recordings: state.recordingsView.root,
@@ -2012,6 +2018,264 @@ function createPlayer(panel) {
 // ---------------------------------------------------------------------------
 // Program guide
 
+/**
+ * What is on, and a way to watch it.
+ *
+ * The tuners view asks which piece of hardware should receive something before it will say
+ * what there is to receive. This asks the other way round: the channels are the list, what
+ * each is showing comes from the guide that is already collected, and the tuner is chosen
+ * when one is needed. Which tuner did it is reported afterwards, and the tuners view still
+ * holds every meter and field it ever did.
+ */
+function createChannelsView(device, player) {
+  const host = device.host;
+  let channels = [];
+  let filter = '';
+  let timer = null;
+  let destroyed = false;
+
+  const search = h('input', {
+    type: 'search',
+    class: 'channels-filter',
+    placeholder: 'Filter by channel or programme',
+    'aria-label': 'Filter channels',
+    oninput: () => { filter = search.value.trim().toLowerCase(); render(); },
+  });
+  const count = h('span', { class: 'channels-count' });
+  const rows = h('div', { class: 'channels-rows' });
+  const note = h('p', { class: 'muted channels-note' });
+
+  const root = h('div', { class: 'view' },
+    h('section', { class: 'card channels' },
+      h('div', { class: 'channels-head' },
+        h('h4', {}, 'Channels', count),
+        search),
+      note,
+      rows));
+
+  load();
+
+  async function load() {
+    if (destroyed) return;
+
+    try {
+      const from  = Math.floor(Date.now() / 1000);
+      const query = new URLSearchParams({ device: host, from: String(from), hours: '3' });
+      const data  = await api(`/api/guide?${query}`);
+
+      channels = Array.isArray(data.channels) ? data.channels : [];
+      render(data.now ?? from);
+    } catch (error) {
+      note.textContent = error.message;
+    }
+
+    // The guide changes slowly; what is on changes every half hour. This is for the clock
+    // moving on rather than for new data arriving.
+    clearTimeout(timer);
+    timer = setTimeout(load, 60_000);
+  }
+
+  /** The programme a channel is showing at this moment, and how far through it is. */
+  function onNow(channel, now) {
+    for (const event of channel.events ?? []) {
+      const start = event.start ?? 0;
+      const end   = start + (event.duration ?? 0);
+
+      if (start <= now && now < end) {
+        return {
+          title: event.title,
+          through: Math.min(100, Math.max(0, Math.round((now - start) / Math.max(1, end - start) * 100))),
+          left: Math.max(0, Math.round((end - now) / 60)),
+        };
+      }
+    }
+
+    return null;
+  }
+
+  function matches(channel, showing) {
+    if (filter === '') return true;
+
+    return `${channel.virtual} ${channel.name} ${showing?.title ?? ''}`.toLowerCase().includes(filter);
+  }
+
+  function render(now = Math.floor(Date.now() / 1000)) {
+    const shown = [];
+
+    for (const channel of channels) {
+      const showing = onNow(channel, now);
+      if (matches(channel, showing)) shown.push([channel, showing]);
+    }
+
+    count.textContent = channels.length === 0 ? '' : ` · ${shown.length}`;
+    note.hidden = channels.length > 0;
+    if (channels.length === 0) note.textContent = 'No channels yet. Scan for channels on the Guide tab.';
+
+    rows.replaceChildren(...shown.map(([channel, showing]) => row(channel, showing)));
+  }
+
+  function row(channel, showing) {
+    // An encrypted channel cannot be watched from here, and an encrypted ATSC 3.0 one
+    // cannot be watched at all; both say so rather than failing when pressed.
+    const atsc3    = Boolean(channel.atsc3);
+    const playable = atsc3 ? Boolean(channel.streamUrl) && !channel.drm : !channel.encrypted;
+    const why      = playable
+      ? `Watch ${channel.virtual} ${channel.name}`
+      : `${channel.virtual} ${channel.name} is encrypted`;
+
+    const heading = h('span', { class: 'channel-title' },
+      showing?.title ?? (playable ? 'No guide data' : 'Encrypted'));
+
+    // An ATSC 3.0 service simulcasts the channel a hundred below it and shows that one's
+    // logo, which is the channel logoFor names: 102.1 is 2.1's picture, and there is no
+    // 102.1.png to ask for. A logo that will not load leaves the dot, so the numbers in
+    // the column beside it stay in line.
+    const badge = h('span', { class: `channel-logo${channel.logo ? '' : ' is-empty'}` });
+
+    if (channel.logo) {
+      const picture = h('img', {
+        src: `/logos/${encodeURIComponent(channel.logoFor ?? channel.virtual)}.png`,
+        alt: '',
+        loading: 'lazy',
+      });
+
+      picture.addEventListener('error', () => {
+        picture.remove();
+        badge.classList.add('is-empty');
+      });
+      badge.append(picture);
+    }
+
+    const button = h('button', {
+      type: 'button',
+      class: 'channel-row',
+      disabled: !playable,
+      title: why,
+      onclick: () => (atsc3 ? watchAtsc3Channel : watchOnATuner)(channel, button, {
+        host,
+        tunerCount: device.tunerCount,
+        player,
+        // Only the heading changes: the row is a grid of elements, and rewriting the whole
+        // control would take the logo, the number and the progress with it.
+        onBusy: (busy) => {
+          heading.textContent = busy
+            ? 'Finding a tuner…'
+            : (showing?.title ?? (playable ? 'No guide data' : 'Encrypted'));
+        },
+      }),
+    },
+      badge,
+      h('span', { class: 'channel-id' },
+        h('b', {}, channel.virtual),
+        h('span', { class: 'channel-call' }, channel.name ?? '')),
+      h('span', { class: 'channel-on' },
+        heading,
+        showing && h('span', { class: 'channel-when' }, `${showing.through}% through · ${showing.left} min left`),
+        showing && h('span', { class: 'channel-bar' }, h('i', { style: `width: ${showing.through}%` }))),
+      h('span', { class: 'channel-tags' },
+        channel.hd && h('span', { class: 'badge hd' }, 'HD'),
+        channel.atsc3 && h('span', { class: 'badge tag-atsc3' }, '3.0'),
+        channel.drm && h('span', { class: 'badge tag-drm' }, 'DRM')),
+    );
+
+    return button;
+  }
+
+  return {
+    root,
+    load,
+    destroy() {
+      destroyed = true;
+      clearTimeout(timer);
+    },
+  };
+}
+
+/**
+ * Watch a channel without being asked which tuner should carry it.
+ *
+ * Written for the guide, where a programme is picked rather than a tuner, and used by the
+ * channels view for the same reason. A tuner a recording holds is off limits; another one
+ * can watch the same channel. A tuner merely left on a channel is free, since watching
+ * retunes it anyway.
+ */
+async function watchOnATuner(channel, button, { host, tunerCount, player, before, onBusy }) {
+  // Never the control's own text: a caller whose button holds elements rather than a word
+  // would have them replaced by the flat string they happened to read as. What "busy"
+  // looks like belongs to the caller, which is the only one that knows what it built.
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  onBusy?.(true);
+
+  try {
+    const tuners = (await Promise.all(Array.from({ length: tunerCount }, (_, index) =>
+      api(`/api/devices/${encodeURIComponent(host)}/tuners/${index}`).then((status) => ({ index, status })).catch(() => null))))
+      .filter(Boolean);
+
+    const free = tuners.filter(({ status }) => !status.reservedBy);
+    const pick = free.find(({ status }) => status.locked && status.physicalChannel === channel.physical)
+      ?? free.find(({ status }) => status.target === 'none' && (status.lockOwner ?? 'none') === 'none');
+
+    if (!pick) {
+      const busy = tuners.find(({ status }) => status.reservedBy);
+
+      throw new Error(busy
+        ? `No free tuner: ${busy.status.reservedBy} is using tuner ${busy.index}.`
+        : 'Every tuner is busy. Stop a tuner or the current playback first.');
+    }
+
+    const base = `/api/devices/${encodeURIComponent(host)}/tuners/${pick.index}`;
+
+    if (!(pick.status.locked && pick.status.physicalChannel === channel.physical)) {
+      const tuned = await api(`${base}/channel`, { method: 'PUT', body: JSON.stringify({ channel: `auto:${channel.physical}` }) });
+      if (!tuned.locked) throw new Error(`No signal on channel ${channel.physical} right now.`);
+    }
+
+    before?.();
+    await player.play({
+      base,
+      host,
+      tunerIndex: pick.index,
+      program: { number: channel.program, virtualChannel: channel.virtual, name: channel.name },
+    });
+
+    return pick.index;
+  } catch (error) {
+    showError(error);
+
+    return null;
+  } finally {
+    button.disabled = Boolean(channel.encrypted);
+    button.removeAttribute('aria-busy');
+    onBusy?.(false);
+  }
+}
+
+/** The same, for a station delivered over the internet: no tuner is involved at all. */
+async function watchAtsc3Channel(channel, button, { host, player, before, onBusy }) {
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  onBusy?.(true);
+
+  try {
+    before?.();
+    await player.playAtsc3({
+      device: host,
+      virtual: channel.virtual,
+      name: channel.name,
+      sound: Boolean(channel.sound),
+      logo: Boolean(channel.logo),
+      logoFor: channel.logoFor ?? null,
+    });
+  } catch (error) {
+    showError(error);
+  } finally {
+    button.disabled = false;
+    button.removeAttribute('aria-busy');
+    onBusy?.(false);
+  }
+}
+
 function createGuideView(device, player) {
   const host = device.host;
   let followNow = true;
@@ -2478,72 +2742,29 @@ function createGuideView(device, player) {
     ];
   }
 
-  async function watchAtsc3(channel, button) {
+  function watchAtsc3(channel, button) {
     const label = button.textContent;
-    button.disabled = true;
-    button.textContent = '…';
 
-    try {
-      // Reachable from the details modal as well as the row. The player sits behind
-      // the modal, which would otherwise stay up and keep the page inert.
-      details.close();
-      await player.playAtsc3({
-        device: host,
-        virtual: channel.virtual,
-        name: channel.name,
-        sound: Boolean(channel.sound),
-        logo: Boolean(channel.logo),
-        logoFor: channel.logoFor ?? null,
-      });
-    } catch (error) {
-      showError(error);
-    } finally {
-      button.disabled = false;
-      button.textContent = label;
-    }
+    // Reachable from the details modal as well as the row. The player sits behind the
+    // modal, which would otherwise stay up and keep the page inert.
+    return watchAtsc3Channel(channel, button, {
+      host,
+      player,
+      before: () => details.close(),
+      onBusy: (busy) => { button.textContent = busy ? '…' : label; },
+    });
   }
 
-  async function watch(channel, button) {
+  function watch(channel, button) {
     const label = button.textContent;
-    button.disabled = true;
-    button.textContent = 'Finding a tuner…';
 
-    try {
-      const tuners = (await Promise.all(Array.from({ length: device.tunerCount }, (_, index) =>
-        api(`/api/devices/${encodeURIComponent(host)}/tuners/${index}`).then((status) => ({ index, status })).catch(() => null))))
-        .filter(Boolean);
-
-      // A tuner a recording holds is off limits; another one can watch the same channel.
-      // A tuner merely left on a channel is free: watching retunes it anyway.
-      const free = tuners.filter(({ status }) => !status.reservedBy);
-      const pick = free.find(({ status }) => status.locked && status.physicalChannel === channel.physical)
-        ?? free.find(({ status }) => status.target === 'none' && (status.lockOwner ?? 'none') === 'none');
-
-      if (!pick) {
-        const busy = tuners.find(({ status }) => status.reservedBy);
-
-        throw new Error(busy
-          ? `No free tuner: ${busy.status.reservedBy} is using tuner ${busy.index}.`
-          : 'Every tuner is busy. Stop a tuner or the current playback first.');
-      }
-
-      const base = `/api/devices/${encodeURIComponent(host)}/tuners/${pick.index}`;
-
-      if (!(pick.status.locked && pick.status.physicalChannel === channel.physical)) {
-        const tuned = await api(`${base}/channel`, { method: 'PUT', body: JSON.stringify({ channel: `auto:${channel.physical}` }) });
-        if (!tuned.locked) throw new Error(`No signal on channel ${channel.physical} right now.`);
-      }
-
-      refreshTuners();
-      // The player sits behind the modal, which also makes it inert.
-      details.close();
-      await player.play({ base, host, tunerIndex: pick.index, program: { number: channel.program, virtualChannel: channel.virtual, name: channel.name } });
-    } catch (error) {
-      showError(error);
-    } finally {
-      button.disabled = channel.encrypted;
-      button.textContent = label;
-    }
+    return watchOnATuner(channel, button, {
+      host,
+      tunerCount: device.tunerCount,
+      player,
+      before: () => { refreshTuners(); details.close(); },
+      onBusy: (busy) => { button.textContent = busy ? 'Finding a tuner…' : label; },
+    });
   }
 
   return {
@@ -2693,6 +2914,7 @@ function createRecordingsView(device, player) {
         {
           key: 'title',
           label: 'Show',
+          class: 'cell-title',
           sort: (schedule) => schedule.title.toLowerCase(),
           search: (schedule) => schedule.title,
           cell: (schedule) => h('span', { class: 'cell-show' },
@@ -2779,6 +3001,7 @@ function createRecordingsView(device, player) {
         {
           key: 'title',
           label: 'Show',
+          class: 'cell-title',
           sort: (recording) => recording.title.toLowerCase(),
           search: (recording) => recording.title,
           cell: (recording) => h('span', { class: 'cell-show' },
@@ -2807,7 +3030,7 @@ function createRecordingsView(device, player) {
         {
           key: 'size',
           label: 'Size',
-          class: 'cell-size',
+          class: 'cell-size drop-mid',
           sort: (recording) => recording.bytes,
           cell: (recording) => formatBytes(recording.bytes),
         },
@@ -3488,6 +3711,8 @@ function selectRadio() {
   state.tunerCards = [];
   state.guideView?.destroy();
   state.guideView = null;
+  state.channelsView?.destroy();
+  state.channelsView = null;
   state.recordingsView?.destroy();
   state.recordingsView = null;
   state.radioView?.destroy();
