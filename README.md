@@ -37,10 +37,11 @@ A programme's details, from where it can be watched or recorded.
 
 ![A programme's details, with a button to watch or record it](docs/guide-details.png)
 
-Recordings, with one in progress. The dot on the tab pulses wherever you are in the page
-while something is being recorded.
+Recordings, grouped by the day they were made or by the show they belong to. A series of
+eleven is one line that opens, each episode named by who was on it. The dot on the tab
+pulses wherever you are in the page while something is being recorded.
 
-![The recordings tab, listing one recording in progress and four finished](docs/recordings.png)
+![The recordings tab, with a series grouped into one card and its episodes listed](docs/recordings.png)
 
 HD Radio, where a dongle is set up: the artwork the station sends, what is playing, its
 subchannels, and how strong the signal is. See [HD Radio](#hd-radio) for what it needs.
