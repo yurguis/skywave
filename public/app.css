@@ -1222,26 +1222,319 @@ button.record.is-recording,
 
 /* HD Radio */
 
-.radio { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
-.radio-tune { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.radio-tune input { width: 96px; font-variant-numeric: tabular-nums; }
-.radio-programs, .radio-stations { display: flex; flex-wrap: wrap; gap: 6px; }
-.radio-programs { margin-left: 8px; }
-.radio-spacer { flex: 1; }
-.radio-scan { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+/* The radio view.
+   It used to borrow the television player: a 16:9 picture frame with a square logo adrift
+   in it, the station's name in a list below, and the controls over a video that was not
+   there. Here the artwork is sized to the artwork, what is playing is the biggest thing on
+   the screen, and the transport sits beside it. */
+.radio { display: grid; gap: var(--space-7); }
+
+.radio-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: var(--space-7);
+  align-items: start;
+}
+
+.radio-left { display: grid; gap: var(--space-7); align-content: start; min-width: 0; }
+.radio-main { display: grid; gap: var(--space-8); align-content: start; }
+
+.radio-now {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  gap: var(--space-9);
+  align-items: center;
+}
+
+.radio-art {
+  width: 168px;
+  aspect-ratio: 1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+.radio-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.radio-art.is-empty { background: linear-gradient(145deg, var(--surface-2), color-mix(in srgb, var(--accent) 14%, var(--surface-2))); }
+.radio-art-empty { font-size: 26px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.radio-meta { min-width: 0; display: grid; gap: var(--space-2); }
+
+.radio-ident {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.radio-dial {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  padding: 1px var(--space-3);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.radio-dial i { font-style: normal; font-size: 10px; font-weight: 600; opacity: .8; }
+
+.radio-title {
+  margin: 0;
+  font-size: clamp(19px, 2.4vw, 24px);
+  line-height: 1.2;
+  letter-spacing: -.015em;
+  overflow-wrap: anywhere;
+}
+.radio-artist { margin: 0; font-size: 15px; color: var(--muted); overflow-wrap: anywhere; }
+.radio-extra { display: grid; gap: var(--space-2); }
+.radio-extra p { margin: 0; font-size: 13px; }
+
+.radio-subs { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
+.radio-sub {
+  min-height: var(--control-h);
+  padding: var(--space-2) var(--space-5);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+}
+.radio-sub[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+
+.radio-transport {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  flex-wrap: wrap;
+  padding-top: var(--space-7);
+  border-top: 1px solid var(--border);
+}
+
+.radio-play {
+  width: 52px;
+  height: 52px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+.radio-play svg { width: 24px; height: 24px; fill: currentColor; }
+
+.radio-icon {
+  width: var(--tap-min);
+  height: var(--tap-min);
+  flex: none;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text);
+  display: grid;
+  place-items: center;
+}
+.radio-icon svg { width: 18px; height: 18px; fill: currentColor; }
+.radio-icon:hover { border-color: var(--accent); color: var(--accent); }
+
+.radio-volume { display: flex; align-items: center; gap: var(--space-4); flex: 1 1 140px; max-width: 210px; color: var(--muted); }
+.radio-volume-icon { display: inline-grid; place-items: center; flex: none; }
+.radio-volume-icon svg { width: 18px; height: 18px; fill: currentColor; }
+.radio-volume-slider { flex: 1; min-width: 0; padding: 0; border: 0; background: none; accent-color: var(--accent); cursor: pointer; }
+
+.radio-signal-box { margin-left: auto; display: flex; align-items: center; gap: var(--space-4); }
+.radio-signal { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.radio-diag > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--control-h);
+  width: fit-content;
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.radio-diag > summary:hover { color: var(--text); }
+/* Setting display on a summary takes its marker away, so the chevron is drawn here. */
+.radio-diag > summary::-webkit-details-marker { display: none; }
+.radio-diag-mark { display: inline-block; font-size: 15px; line-height: 1; transition: transform 180ms ease; }
+.radio-diag[open] .radio-diag-mark { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .radio-diag-mark { transition: none; } }
+.radio-diag-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(116px, 1fr));
+  gap: var(--space-4);
+  margin: var(--space-4) 0 0;
+}
+.radio-diag-grid > div { padding: var(--space-4) var(--space-5); border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--surface-2); }
+.radio-diag-grid dt { font-size: 11.5px; color: var(--muted); }
+.radio-diag-grid dd { margin: 2px 0 0; font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* The side column: where a station is chosen, and where one is found. */
+.radio-side { display: grid; gap: var(--space-7); align-content: start; }
+.radio-panel { padding: 0; overflow: hidden; }
+
+.radio-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--border);
+}
+.radio-panel-head h4 { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.radio-count { font-weight: 600; }
+.radio-panel-actions { display: flex; gap: var(--space-1); }
+
+.radio-linkish {
+  min-height: var(--control-h);
+  padding: 0 var(--space-4);
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 13px;
+}
+.radio-linkish:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+.radio-tune { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-6); flex-wrap: wrap; }
+.radio-step {
+  width: var(--tap-min);
+  height: var(--tap-min);
+  flex: none;
+  padding: 0;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 18px;
+}
+.radio-step:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.radio-freq-field { flex: 1 1 96px; min-width: 0; text-align: center; }
+.radio-freq {
+  width: 100%;
+  min-height: var(--tap-min);
+  text-align: center;
+  font-size: 19px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.radio-freq-field .muted { display: block; margin-top: var(--space-1); font-size: 11.5px; }
+.radio-listen { flex: 1 1 100%; min-height: var(--control-h); }
+
+.radio-scan { padding: var(--space-4) var(--space-6); color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; border-bottom: 1px solid var(--border); }
 .radio-scan.radio-error { color: var(--red); }
-.radio button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 
-/* A station and the button that forgets it, joined so they read as one thing. */
-.radio-station { display: inline-flex; }
-.radio-station button:first-child { border-radius: 6px 0 0 6px; }
-.radio-station button.remove { border-left: 0; border-radius: 0 6px 6px 0; padding: 6px 8px; color: var(--muted); }
-.radio-station button.remove:hover { color: var(--red); }
+/* Stations read down a column rather than wrapping as a wall of pills. */
+.radio-stations { max-height: 330px; overflow-y: auto; }
+.radio-station { display: flex; align-items: stretch; border-bottom: 1px solid var(--border); }
+.radio-station:last-child { border-bottom: 0; }
+.radio-station[aria-current="true"] { background: color-mix(in srgb, var(--accent) 13%, transparent); }
 
-.radio-now { display: grid; gap: 6px; }
-.radio-now p { margin: 0; }
-.radio-signal { font-variant-numeric: tabular-nums; }
+.radio-station-pick {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 30px 52px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-6);
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  font-size: 13.5px;
+}
+.radio-station-pick:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.radio-station-pick b { font-size: 14px; font-variant-numeric: tabular-nums; }
+.radio-station[aria-current="true"] .radio-station-pick b { color: var(--accent); }
+/* The station's own logo where one has been kept, and a dot where none has, so the
+   frequencies stay in one column whether a row has a picture or not. */
+.radio-station-logo {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  background: var(--surface);
+}
+.radio-station-logo img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.radio-station-logo.is-empty { background: none; }
+.radio-station-logo.is-empty::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+}
+
+.radio-station-name { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.radio-station[aria-current="true"] .radio-station-name { color: var(--text); }
+.radio-station-pick:disabled { opacity: 1; cursor: default; }
+
+.radio-bars { display: flex; align-items: flex-end; gap: 2px; height: 12px; }
+.radio-bars i { width: 3px; border-radius: 1px; background: var(--accent); animation: radio-eq 1.1s ease-in-out infinite; }
+.radio-bars i:nth-child(1) { height: 6px; animation-delay: -.2s; }
+.radio-bars i:nth-child(2) { height: 12px; animation-delay: -.5s; }
+.radio-bars i:nth-child(3) { height: 9px; animation-delay: -.8s; }
+@keyframes radio-eq { 0%, 100% { transform: scaleY(.45); } 50% { transform: scaleY(1); } }
+
+.radio-remove {
+  width: var(--tap-min);
+  flex: none;
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 17px;
+}
+.radio-remove:hover { color: var(--red); background: color-mix(in srgb, var(--red) 12%, transparent); }
+
 .radio-error { margin: 0; color: var(--red); }
+
+@media (prefers-reduced-motion: reduce) {
+  .radio-bars i { animation: none; }
+}
+
+@media (max-width: 900px) {
+  .radio-stage { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Stacked on a phone, the card becomes a now-playing screen rather than a row, so it
+   composes on one centre line: artwork, who is on, what they are playing, the subchannels
+   and the transport. The side panels stay left aligned -- a form and a list are read down
+   an edge, not from the middle. */
+@media (max-width: 560px) {
+  .radio-now {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-6);
+    justify-items: center;
+    text-align: center;
+  }
+
+  .radio-art { width: 100%; max-width: 268px; }
+  .radio-meta { justify-items: center; width: 100%; }
+  .radio-ident { justify-content: center; }
+  /* Titles here run long -- a phone number read out as a song title, a show and its hours.
+     Balanced so a centred second line does not come back as one orphaned word. */
+  .radio-title { text-wrap: balance; }
+  .radio-subs { justify-content: center; }
+
+  .radio-transport { justify-content: center; gap: var(--space-5); }
+  .radio-volume { flex: 1 1 100%; max-width: 280px; order: 3; }
+  .radio-signal-box { margin-left: 0; order: 4; flex: 1 1 100%; justify-content: center; }
+
+  /* Not this. The reception figures are reference data, read down a left edge like the
+     panels beside them -- and centring the disclosure shrank it to its own content, which
+     left the three cards narrower than the card holding them. */
+}
 
 /* Touch targets.
    Scoped to a coarse pointer rather than a narrow width: a tablet is touched but is wider
@@ -1271,7 +1564,8 @@ button.record.is-recording,
   /* Several of these hold one glyph and came out 33px wide -- the guide's time arrows,
      which are how the schedule is moved on a phone, and the close button on the details
      panel. Width is not given to the sort control above, which would widen its column. */
-  button.secondary { min-width: var(--tap-min); }
+  button.secondary,
+  .radio-linkish { min-width: var(--tap-min); }
 
   /* The checkbox itself stays the size the platform draws it. The label already toggles
      it, so the label is what gets the target. */
@@ -1300,4 +1594,18 @@ button.record.is-recording,
   width: var(--tap-min);
   height: var(--tap-min);
   transform: translate(-50%, -50%);
+}
+
+/* The radio view draws its own artwork and transport, so the player's picture frame gets
+   out of the way while still playing. Hidden rather than removed: the media element has to
+   stay in the document for the sound to keep coming. */
+.player.is-radio-panel {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  border: 0;
 }
