@@ -17,6 +17,11 @@ Start it with [Docker](#docker), or run it straight from PHP.
 
 ## Screenshots
 
+Channels, with what each one is showing and how far through it is. Pick one and a tuner
+is found for it; the Tuners tab keeps every meter and field for anyone who wants them.
+
+![The channels tab, listing stations with their logos and what is on now](docs/channels.png)
+
 Watching a channel. The overlay carries the station's logo, what is on now and what is
 next, a seek bar over the rewind window, and the controls for picture size, audio track,
 captions and recording.
