@@ -2914,6 +2914,7 @@ function createRecordingsView(device, player) {
         {
           key: 'title',
           label: 'Show',
+          class: 'cell-title',
           sort: (schedule) => schedule.title.toLowerCase(),
           search: (schedule) => schedule.title,
           cell: (schedule) => h('span', { class: 'cell-show' },
@@ -3000,6 +3001,7 @@ function createRecordingsView(device, player) {
         {
           key: 'title',
           label: 'Show',
+          class: 'cell-title',
           sort: (recording) => recording.title.toLowerCase(),
           search: (recording) => recording.title,
           cell: (recording) => h('span', { class: 'cell-show' },
@@ -3028,7 +3030,7 @@ function createRecordingsView(device, player) {
         {
           key: 'size',
           label: 'Size',
-          class: 'cell-size',
+          class: 'cell-size drop-mid',
           sort: (recording) => recording.bytes,
           cell: (recording) => formatBytes(recording.bytes),
         },

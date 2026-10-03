@@ -1180,15 +1180,32 @@ button.record.is-recording,
 .list-table .cell-show .art { width: 34px; aspect-ratio: 2 / 3; border-radius: 3px; object-fit: cover; flex: none; }
 .list-table .cell-show .name { display: grid; gap: 2px; min-width: 0; }
 .list-table .cell-show .title { font-weight: 500; }
+/* The title takes whatever is left over.
+   Everything else here is either a date, a duration or a size, and all of them refuse to
+   wrap -- so an auto table satisfies them first and gives the title whatever remains,
+   which was eighty pixels and "The Tonight Show Starring Jimmy Fallon" one word to a
+   line. Asking for the whole width turns that round: the others still size to their
+   content and the title gets the rest. */
+.list-table .cell-title { width: 100%; min-width: 150px; }
+
 .list-table .cell-when { white-space: nowrap; }
 .list-table .cell-size, .list-table .cell-length { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .list-table .cell-actions { text-align: right; }
 .list-table .cell-actions > * { vertical-align: middle; }
 .list-table .actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 
-/* A narrow screen keeps what identifies a row and drops what can be inferred. */
-@media (max-width: 760px) {
+/* A narrow screen keeps what identifies a row and drops what can be inferred.
+   At 1100 rather than 760: the recorded table's seven columns want 689px and had 655 at
+   1024, so its buttons were clipped before anything was dropped. */
+@media (max-width: 1100px) {
   .list-table .drop-narrow { display: none; }
+}
+
+/* Size goes one step later than the channel and the length. Measured: with the sidebar
+   taking its share, the content column is 491px at 860, and date, show, size, status and
+   the buttons wanted 552 of it -- so the buttons were cut off at the edge. */
+@media (max-width: 950px) {
+  .list-table .drop-mid { display: none; }
 }
 
 @media (max-width: 520px) {
