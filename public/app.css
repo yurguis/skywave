@@ -1837,3 +1837,25 @@ button.record.is-recording,
   .recorded-when { grid-column: 1 / -1; display: flex; gap: var(--space-4); align-items: baseline; }
   .recorded-when b { display: inline; }
 }
+
+/* A download that has formats to choose between says so, rather than looking like the one
+   that just saves and then opening a menu. */
+.recorded-icon.has-menu { position: relative; }
+.recorded-caret {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 0;
+  height: 0;
+  border-left: 3.5px solid transparent;
+  border-right: 3.5px solid transparent;
+  border-top: 4px solid currentColor;
+  opacity: .75;
+}
+
+/* Standing in for a 44px button, so the row keeps its shape while it is open. */
+.recorded-acts .record-format {
+  min-height: var(--tap-min);
+  max-width: 190px;
+  font-size: 12.5px;
+}

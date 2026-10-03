@@ -3323,13 +3323,20 @@ function createRecordingsView(device, player) {
    * constantly for something almost nobody clicks.
    */
   function downloadControl(recording) {
+    // A recording kept in both forms offers a choice of which to save, and one kept in a
+    // single form just saves. The page already knows which it is -- the converted copy is
+    // what makes the difference -- so the button can say so rather than looking identical
+    // and surprising you with a menu.
+    const choices = Boolean(recording.convertedPath);
+
     const button = h('button', {
       type: 'button',
-      class: 'recorded-icon',
-      title: 'Save it to this device',
-      'aria-label': 'Download',
+      class: `recorded-icon${choices ? ' has-menu' : ''}`,
+      title: choices ? 'Save it to this device: choose a format' : 'Save it to this device',
+      'aria-label': choices ? `Download ${recording.title}, choose a format` : `Download ${recording.title}`,
+      'aria-haspopup': choices ? 'listbox' : null,
       onclick: () => offer(),
-    }, icon('download'));
+    }, icon('download'), choices ? h('span', { class: 'recorded-caret', 'aria-hidden': 'true' }) : null);
 
     async function offer() {
       button.disabled = true;
@@ -3370,8 +3377,19 @@ function createRecordingsView(device, player) {
           title: one.detail,
         }, `${one.name} · ${formatBytes(one.bytes)}`)));
 
+      // Sized to the button it stands in for, so the row does not jump when it opens.
       button.replaceWith(choice);
       choice.focus();
+
+      // Put the button back when the choice is made or abandoned, rather than leaving a
+      // dropdown sitting in a row of icons.
+      // Once a format is chosen the icon comes back, rather than leaving a dropdown parked
+      // in a row of icons. Clicking away leaves it open, as it always has: a blur listener
+      // was tried and did not fire dependably, and a control that sometimes closes itself
+      // is worse than one that waits.
+      choice.addEventListener('change', () => {
+        if (choice.isConnected) choice.replaceWith(button);
+      });
     }
 
     return button;
