@@ -31,6 +31,7 @@ use Skywave\Radio\Receiver;
 use Skywave\Radio\ScanJobs;
 use Skywave\Radio\StationStore;
 use Skywave\Web\Api;
+use Skywave\Radio\StationLogos;
 use Skywave\Web\LiveStreams;
 use Skywave\Web\Logs;
 use Symfony\Component\HttpFoundation\Request;
@@ -88,6 +89,25 @@ if (preg_match('#^/radio/([a-f0-9]{16})/([^/]+)$#', $path, $match)) {
 
     header('Content-Type: ' . (preg_match('/\.png$/i', $file) ? 'image/png' : 'image/jpeg'));
     header('Cache-Control: max-age=3600');
+    readfile($file);
+
+    return;
+}
+
+// The logo a station sent on an earlier listen, kept so the next one can draw it at once
+// rather than showing a frequency on a grey square for the minute it takes to arrive again.
+if (preg_match('#^/radio-logo/(\d{2,3}(?:\.\d)?)$#', $path, $match)) {
+    $file = StationLogos::fromEnvironment()->pathFor((float) $match[1]);
+
+    if ($file === null) {
+        http_response_code(404);
+
+        return;
+    }
+
+    header('Content-Type: image/png');
+    // Short: a station that rebrands should not be stuck behind a day-long cache.
+    header('Cache-Control: max-age=300');
     readfile($file);
 
     return;
