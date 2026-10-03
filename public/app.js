@@ -2882,12 +2882,12 @@ function createRecordingsView(device, player) {
     seriesCard,
     h('section', { class: 'card recorded' },
       h('div', { class: 'guide-toolbar' }, h('h3', {}, 'Recorded', recordedCount), recordedFilter),
+      // Each label travels with the buttons it names: loose in one row they wrapped apart,
+      // leaving "Sort" at the end of one line and its buttons at the start of the next.
       h('div', { class: 'recorded-controls' },
-        h('span', { class: 'muted' }, 'Group'),
-        groupButtons,
+        h('span', { class: 'recorded-pair' }, h('span', { class: 'muted' }, 'Group'), groupButtons),
         h('span', { class: 'recorded-spacer' }),
-        h('span', { class: 'muted' }, 'Sort'),
-        sortButtons),
+        h('span', { class: 'recorded-pair' }, h('span', { class: 'muted' }, 'Sort'), sortButtons)),
       recordedList,
     ),
   );

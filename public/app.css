@@ -1719,6 +1719,7 @@ button.record.is-recording,
   margin-bottom: var(--space-6);
   font-size: 12.5px;
 }
+.recorded-pair { display: inline-flex; align-items: center; gap: var(--space-4); }
 .recorded-spacer { flex: 1; }
 .recorded-count { font-weight: 600; color: var(--muted); }
 .recorded-empty { margin: 0; padding: var(--space-8) 0; font-size: 13px; }
@@ -1832,10 +1833,30 @@ button.record.is-recording,
 .recorded-episodes { display: none; border-top: 1px solid var(--border); padding: 0 var(--space-6); }
 .recorded-show.is-open .recorded-episodes { display: block; }
 
+/* On a phone the row becomes three lines rather than three columns.
+   Side by side, the buttons took 150px of a 390px row and left the title a word to a
+   line; opening the download, which stands in for one of them, left it less than that.
+   Given a line of their own they have room, and nothing has to shrink below the 44px it
+   needs to be pressed. */
 @media (max-width: 620px) {
-  .recorded-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: var(--space-2); }
-  .recorded-when { grid-column: 1 / -1; display: flex; gap: var(--space-4); align-items: baseline; }
+  /* The spacer pushed Sort to the far edge, which read as belonging to the line below it. */
+  .recorded-controls .recorded-spacer { display: none; }
+
+  .recorded-row {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: var(--space-4);
+    padding: var(--space-6) var(--space-2);
+  }
+
+  .recorded-when { display: flex; gap: var(--space-4); align-items: baseline; }
   .recorded-when b { display: inline; }
+
+  .recorded-acts { justify-content: flex-end; }
+  /* It is the widest thing in the row when it opens, so here it takes the room it needs. */
+  .recorded-acts .record-format { flex: 1; max-width: none; }
+
+  .recorded-show-head { padding: var(--space-5); }
+  .recorded-episodes { padding: 0 var(--space-5); }
 }
 
 /* A download that has formats to choose between says so, rather than looking like the one
