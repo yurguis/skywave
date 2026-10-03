@@ -2126,6 +2126,26 @@ function createChannelsView(device, player) {
     const heading = h('span', { class: 'channel-title' },
       showing?.title ?? (playable ? 'No guide data' : 'Encrypted'));
 
+    // An ATSC 3.0 service simulcasts the channel a hundred below it and shows that one's
+    // logo, which is the channel logoFor names: 102.1 is 2.1's picture, and there is no
+    // 102.1.png to ask for. A logo that will not load leaves the dot, so the numbers in
+    // the column beside it stay in line.
+    const badge = h('span', { class: `channel-logo${channel.logo ? '' : ' is-empty'}` });
+
+    if (channel.logo) {
+      const picture = h('img', {
+        src: `/logos/${encodeURIComponent(channel.logoFor ?? channel.virtual)}.png`,
+        alt: '',
+        loading: 'lazy',
+      });
+
+      picture.addEventListener('error', () => {
+        picture.remove();
+        badge.classList.add('is-empty');
+      });
+      badge.append(picture);
+    }
+
     const button = h('button', {
       type: 'button',
       class: 'channel-row',
@@ -2144,12 +2164,7 @@ function createChannelsView(device, player) {
         },
       }),
     },
-      h('span', { class: `channel-logo${channel.logo ? '' : ' is-empty'}` },
-        channel.logo && h('img', {
-          src: `/logos/${encodeURIComponent(channel.virtual)}.png`,
-          alt: '',
-          loading: 'lazy',
-        })),
+      badge,
       h('span', { class: 'channel-id' },
         h('b', {}, channel.virtual),
         h('span', { class: 'channel-call' }, channel.name ?? '')),
