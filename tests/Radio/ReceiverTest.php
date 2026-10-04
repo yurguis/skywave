@@ -90,4 +90,83 @@ class ReceiverTest extends TestCase
 
         new Receiver(PHP_BINARY, 'not an address');
     }
+
+    public function testAnalogIsOffUntilRtlanalogIsNamed(): void
+    {
+        $without = new Receiver(PHP_BINARY, '127.0.0.1');
+
+        $this->assertFalse($without->supportsAnalog());
+        $this->assertStringContainsString('RTLANALOG', $without->whyAnalogMissing());
+
+        $with = new Receiver(PHP_BINARY, '127.0.0.1', null, null, null, PHP_BINARY);
+
+        $this->assertTrue($with->supportsAnalog());
+    }
+
+    public function testTheAnalogCommandSaysWhichModeAndTunesInHertz(): void
+    {
+        $receiver = new Receiver(PHP_BINARY, '192.168.1.20:1234', null, 40.2, 3, PHP_BINARY);
+
+        // FM asks for the multiplex, not audio: redsea needs the subcarrier that
+        // demodulating to sound would throw away.
+        $this->assertSame(
+            [PHP_BINARY, '-H', '192.168.1.20:1234', '-g', '40.2', '-p', '3', '-M', 'mpx', '-f', '93100000'],
+            $receiver->analogArguments('fm', 93.1)
+        );
+
+        $this->assertSame(
+            [PHP_BINARY, '-H', '192.168.1.20:1234', '-g', '40.2', '-p', '3', '-M', 'am', '-f', '1140000'],
+            $receiver->analogArguments('am', 1.14)
+        );
+    }
+
+    public function testHdRadioIsNotRtlanalogsToTune(): void
+    {
+        $receiver = new Receiver(PHP_BINARY, '127.0.0.1', null, null, null, PHP_BINARY);
+
+        $this->expectException(InvalidArgumentException::class);
+        $receiver->analogArguments('hd', 93.1);
+    }
+
+    public function testAnAmFrequencyKeepsItsKilohertz(): void
+    {
+        // The tenth-of-a-MHz rounding the FM band wants would make 1140 kHz into 1100 and
+        // tune the wrong station without saying anything.
+        $this->assertSame(1.14, Receiver::validateFrequency(1.14, 'am'));
+        $this->assertSame(0.61, Receiver::validateFrequency(0.61, 'am'));
+        $this->assertSame(1.7, Receiver::validateFrequency(1.7, 'am'));
+    }
+
+    public function testEachBandRefusesTheOthersFrequencies(): void
+    {
+        foreach ([['am', 93.1], ['fm', 1.14], ['hd', 1.14], ['am', 0.4], ['am', 1.8]] as [$mode, $frequency]) {
+            try {
+                Receiver::validateFrequency($frequency, $mode);
+                $this->fail("$mode should not accept $frequency");
+            } catch (InvalidArgumentException $e) {
+                $this->assertStringContainsString($mode === 'am' ? 'AM stations' : 'FM stations', $e->getMessage());
+            }
+        }
+    }
+
+    public function testAnAmErrorTalksInKilohertz(): void
+    {
+        // Nobody tuning AM thinks in MHz, so the complaint should not either.
+        try {
+            Receiver::validateFrequency(2.5, 'am');
+            $this->fail('expected a refusal');
+        } catch (InvalidArgumentException $e) {
+            $this->assertSame('AM stations are between 530 and 1700 kHz, not 2500', $e->getMessage());
+        }
+    }
+
+    public function testOnlyTheThreeModesExist(): void
+    {
+        $this->assertSame('fm', Receiver::bandOf('fm'));
+        $this->assertSame('fm', Receiver::bandOf('hd'));
+        $this->assertSame('am', Receiver::bandOf('am'));
+
+        $this->expectException(InvalidArgumentException::class);
+        Receiver::validateMode('shortwave');
+    }
 }
