@@ -4054,7 +4054,9 @@ function createRadioView(radio, player) {
     station = null;
     // The logo kept from an earlier listen, standing in until this one sends its own --
     // which takes about a minute, and used to be a minute of looking at a grey square.
-    savedLogo = stations.find((saved) => saved.frequency === frequency)?.logo ?? null;
+    // The subchannel's own, where it has one: HD2 is a different station to HD1 and
+    // showing HD1's picture over it is worse than showing none.
+    savedLogo = logoKeptFor(frequency, program);
     // Whatever was playing when the page opened is not what is playing now.
     playing = null;
     frequencyInput.value = frequency.toFixed(1);
@@ -4167,6 +4169,15 @@ function createRadioView(radio, player) {
       }, '\u00d7'),
     );
   }
+  /** The logo kept for one subchannel, or the station's where that subchannel has none. */
+  function logoKeptFor(frequency, program) {
+    const saved = stations.find((candidate) => candidate.frequency === frequency);
+    if (!saved) return null;
+
+    const theirs = (saved.programs ?? []).find((one) => one.number === program)?.logo ?? null;
+
+    return theirs ?? (program === 0 ? saved.logo ?? null : null);
+  }
 
   /** Stations that have been heard, kept so they can be picked rather than typed. */
   function remember(frequency, name) {
@@ -4213,7 +4224,7 @@ function createRadioView(radio, player) {
   /** Take the stations and the scan's progress from any answer that carries them. */
   function applyStations(body) {
     if (serverKeeps && Array.isArray(body.stations)) stations = body.stations;
-    if (listening) savedLogo = stations.find((s) => s.frequency === listening.frequency)?.logo ?? savedLogo;
+    if (listening) savedLogo = logoKeptFor(listening.frequency, listening.program) ?? savedLogo;
     scan = body.scan ?? null;
     render();
   }
