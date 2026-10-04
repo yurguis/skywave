@@ -409,6 +409,25 @@ final class Receiver
     }
 
     /**
+     * A frequency on whichever band it belongs to, for the times the band is not said.
+     *
+     * Removing a saved station is one: it is named by a number that is already in the
+     * database, and the number says which band it is. The two cannot be confused -- AM
+     * stops at 1.70 MHz and FM starts at 87.5 -- so there is nothing to guess at.
+     *
+     * @param mixed $frequency
+     */
+    public static function validateAnyFrequency($frequency): float
+    {
+        $number = is_int($frequency) || is_float($frequency) ? (float) $frequency : null;
+
+        return self::validateFrequency(
+            $frequency,
+            $number !== null && $number <= self::MAX_AM_FREQUENCY ? self::MODE_AM : self::MODE_HD
+        );
+    }
+
+    /**
      * @param mixed $program
      */
     public static function validateProgram($program): int

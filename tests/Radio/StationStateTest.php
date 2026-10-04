@@ -340,5 +340,12 @@ class StationStateTest extends TestCase
         // And counted as found from the start: there is no carrier to lock and no name to
         // wait for, so waiting would mean saying "tuning" for the whole of the listen.
         $this->assertTrue($station['synchronized']);
+
+        // The same on analog FM, where a station that sends no RDS plays perfectly well
+        // and would otherwise never be counted as found, nor ever be saved.
+        $this->assertTrue((new StationState(0, 'fm'))->toArray()['synchronized']);
+
+        // HD Radio still has to actually be found before it counts as found.
+        $this->assertFalse((new StationState(0, 'hd'))->toArray()['synchronized']);
     }
 }

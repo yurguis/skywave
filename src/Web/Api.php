@@ -242,10 +242,12 @@ class Api
             return $this->routeRadioScan($method, $request);
         }
 
-        if (preg_match('#^/api/radio/stations/(\d{2,3}(?:\.\d)?)$#', $path, $match)) {
+        // 93.1 and 104.3 on FM, 1.06 on AM: one to three digits, and up to three decimals
+        // because AM is counted to the kilohertz.
+        if (preg_match('#^/api/radio/stations/(\d{1,3}(?:\.\d{1,3})?)$#', $path, $match)) {
             self::requireMethod($method, 'DELETE');
 
-            return $this->forgetStation(Receiver::validateFrequency((float) $match[1]));
+            return $this->forgetStation(Receiver::validateAnyFrequency((float) $match[1]));
         }
 
         if ($path === '/api/guide') {

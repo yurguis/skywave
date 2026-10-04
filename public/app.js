@@ -3986,6 +3986,9 @@ function createRadioView(radio, player) {
       saveSetting(RADIO_MODE_STORAGE_KEY, mode);
       applyBand();
       renderModes();
+      // The rest of the view talks about the band too -- what is on, and where the
+      // stations sit -- so changing it changes more than the field.
+      render();
     },
   }, MODE_NAMES[one] ?? one));
 
@@ -4281,10 +4284,17 @@ function createRadioView(radio, player) {
         class: 'radio-remove',
         title: `Forget ${saved.name ?? dial}`,
         'aria-label': `Forget ${saved.name ?? dial}`,
-        onclick: () => forget(saved.frequency, saved.name),
+        onclick: () => forget(saved.frequency, saved.name, savedMode),
       }, '\u00d7'),
     );
   }
+  /** A tuned station's frequency, counted the way its band counts. */
+  function onDial(tuned) {
+    const band = BANDS[bandOf(tuned.mode ?? 'hd')];
+
+    return (Number(tuned.frequency) * band.scale).toFixed(band.decimals);
+  }
+
   /** The logo kept for one subchannel, or the station's where that subchannel has none. */
   function logoKeptFor(frequency, program) {
     const saved = stations.find((candidate) => candidate.frequency === frequency);
@@ -4312,13 +4322,17 @@ function createRadioView(radio, player) {
     saveSetting(RADIO_STATIONS_STORAGE_KEY, JSON.stringify(stations));
   }
 
-  async function forget(frequency, name) {
-    const label = name ? `${frequency.toFixed(1)} ${name}` : frequency.toFixed(1);
+  async function forget(frequency, name, forgetMode = 'hd') {
+    const band = BANDS[bandOf(forgetMode)];
+    const dial = `${(frequency * band.scale).toFixed(band.decimals)} ${band.unit === 'kHz' ? 'AM' : 'FM'}`;
+    const label = name ? `${dial} ${name}` : dial;
     if (!confirm(`Remove ${label} from your stations?`)) return;
 
     if (serverKeeps) {
       try {
-        applyStations(await api(`/api/radio/stations/${frequency.toFixed(1)}`, { method: 'DELETE' }));
+        // In MHz, as it is held: 1.06 for an AM station, not the 1.1 that rounding to a
+        // tenth would make of it, and not the 1060 the field above shows.
+        applyStations(await api(`/api/radio/stations/${frequency}`, { method: 'DELETE' }));
       } catch (error) {
         showError(error);
       }
@@ -4432,7 +4446,9 @@ function createRadioView(radio, player) {
         onclick: () => listen(listening.frequency, number),
       }, `HD${number + 1}`);
     }));
-    programButtons.hidden = listening === null;
+    // Analog has no subchannels: the frequency is the station, and an HD1 pill over it
+    // says something untrue.
+    programButtons.hidden = listening === null || (listening.mode ?? 'hd') !== 'hd';
 
     renderNowPlaying();
     renderTransport();
@@ -4446,30 +4462,33 @@ function createRadioView(radio, player) {
     artwork.replaceChildren(picture
       ? h('img', { src: picture, alt: station?.station ? `${station.station} artwork` : 'Station artwork' })
       : h('span', { class: 'radio-art-empty', 'aria-hidden': 'true' },
-        listening ? listening.frequency.toFixed(1) : '●'));
+        listening ? onDial(listening) : '●'));
     artwork.classList.toggle('is-empty', picture === null);
 
     if (listening === null) {
       ident.textContent = playing
-        ? `${playing.station ? `${playing.station} · ` : ''}${Number(playing.frequency).toFixed(1)} FM is on`
+        ? `${playing.station ? `${playing.station} · ` : ''}${dialLabel(playing)} is on`
         : 'Nothing playing';
       title.textContent = playing ? 'Pick a station, or tune one' : 'Pick a station';
       artist.textContent = '';
-      extra.replaceChildren(h('p', { class: 'muted' },
-        'HD Radio stations in North America sit on the odd tenths: 88.1, 90.5, 101.1.'));
+      extra.replaceChildren(h('p', { class: 'muted' }, mode === 'am'
+        ? 'AM stations in North America sit on the tens: 610, 1140, 1260.'
+        : 'FM stations in North America sit on the odd tenths: 88.1, 90.5, 101.1.'));
 
       return;
     }
 
-    const dial = `${listening.frequency.toFixed(1)} FM`;
+    const dial = dialLabel(listening);
 
+    // Only HD Radio has anything to find. Analog counts as found the moment it is tuned:
+    // there is no carrier to lock, and a station sending no RDS still plays.
     if (!station?.synchronized) {
       ident.textContent = dial;
       title.textContent = 'Looking for HD Radio…';
       artist.textContent = '';
       extra.replaceChildren(...[
         Date.now() - listening.since >= 20000 && h('p', { class: 'muted' },
-          'Nothing digital yet. Not every station broadcasts HD Radio, and one that does needs a stronger signal than its analogue sound.'),
+          'Nothing digital yet. Not every station broadcasts HD Radio, and one that does needs a stronger signal than its analog sound — the same station may play on FM.'),
       ].filter(Boolean));
 
       return;
@@ -4484,7 +4503,7 @@ function createRadioView(radio, player) {
     const slogan = station.slogan && !saysNothing ? station.slogan : null;
 
     ident.replaceChildren(...[
-      h('span', { class: 'radio-dial' }, listening.frequency.toFixed(1), h('i', {}, 'FM')),
+      h('span', { class: 'radio-dial' }, onDial(listening), h('i', {}, bandOf(listening.mode ?? 'hd') === 'am' ? 'AM' : 'FM')),
       station.station && h('span', {}, station.station),
       slogan && h('span', { class: 'muted' }, slogan),
     ].filter(Boolean));

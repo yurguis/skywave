@@ -80,12 +80,14 @@ final class StationState
         $this->program = $program;
         $this->mode    = Receiver::validateMode($mode);
 
-        // AM has nothing to synchronise on and nothing to say about itself: no digital
-        // carrier to lock, no RDS, no name. The dial position is the whole of the station.
-        // Left waiting for a confirmation that never comes, the page would say it was
-        // tuning for as long as it played, and the station would never be worth saving.
-        // Static on an empty frequency is what an AM radio has always sounded like.
-        if ($this->mode === Receiver::MODE_AM) {
+        // Analog has nothing to synchronise on. There is no digital carrier to lock: the
+        // dial position is the whole of the station, and what comes out of it is whatever
+        // is on that frequency. AM says nothing about itself at all, and plenty of FM
+        // stations send no RDS either -- waiting for a name that may never come would have
+        // the page saying it was tuning for as long as it played, and would mean a station
+        // without RDS could never be saved. Static on an empty frequency is what an analog
+        // radio has always sounded like.
+        if ($this->mode !== Receiver::MODE_HD) {
             $this->synchronized = true;
         }
     }
