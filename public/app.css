@@ -1494,6 +1494,20 @@ button.record.is-recording,
 }
 
 .radio-station-name { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Which subchannel this row is, where a frequency carries more than one. */
+.radio-station-sub {
+  display: inline-block;
+  margin-right: var(--space-3);
+  padding: 0 var(--space-3);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+.radio-station[aria-current="true"] .radio-station-sub { background: color-mix(in srgb, var(--accent) 26%, transparent); color: var(--accent); }
 .radio-station[aria-current="true"] .radio-station-name { color: var(--text); }
 .radio-station-pick:disabled { opacity: 1; cursor: default; }
 

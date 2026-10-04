@@ -4102,6 +4102,76 @@ function createRadioView(radio, player) {
     refreshStations();
   }
 
+
+  /**
+   * A frequency carries one station or several, and a subchannel is its own station to
+   * whoever is listening: its own name, often its own logo, and nothing to say it is the
+   * second of anything. So each gets a row and can be tuned without going through HD1.
+   */
+  function rowsFor(saved, scanning) {
+    const programs = Array.isArray(saved.programs) ? saved.programs : [];
+
+    if (programs.length < 2) return [stationRow(saved, programs[0] ?? null, scanning, false)];
+
+    return programs.map((program) => stationRow(saved, program, scanning, true));
+  }
+
+  /**
+   * What a subchannel is called.
+   *
+   * Most name themselves usefully -- Magic 93.9, Fox Sports 940, Israeli Radio -- and the
+   * rest answer "HD2", or the call sign with "HD2" after it, which says only what the pill
+   * beside it already says. Those fall back to the station's own name.
+   */
+  function programName(saved, program) {
+    const given = (program?.name ?? '').trim();
+
+    // "HD2", "HD-1", "WRTO-HD1", "WPOW-HD2": a call sign and the number, which the pill
+    // beside it already carries. The call sign in the name is not always the station's own,
+    // so anything in front of the HD is allowed for rather than matched against it.
+    if (given === '' || /^(?:[\w@.]+[\s-]+)?hd-?\d$/i.test(given)) {
+      return saved.name ?? '';
+    }
+
+    return given;
+  }
+
+  function stationRow(saved, program, scanning, labelled) {
+    const number = program?.number ?? 0;
+    const chosen = listening?.frequency === saved.frequency && listening?.program === number;
+    const logo = program?.logo ?? (number === 0 ? saved.logo : null) ?? null;
+    const name = labelled ? programName(saved, program) : (saved.name ?? '');
+    const what = `${saved.frequency.toFixed(1)}${labelled ? ` HD${number + 1}` : ''}${name ? ` ${name}` : ''}`;
+
+    return h('div', { class: 'radio-station', 'aria-current': String(chosen) },
+      h('button', {
+        type: 'button',
+        class: 'radio-station-pick',
+        disabled: scanning || editing,
+        title: `Listen to ${what}`,
+        onclick: () => listen(saved.frequency, number),
+        // A station found before it gave its name is still a station; it is its frequency.
+      },
+        h('span', { class: `radio-station-logo${logo ? '' : ' is-empty'}` },
+          logo && h('img', { src: logo, alt: '', loading: 'lazy' })),
+        h('b', {}, saved.frequency.toFixed(1)),
+        h('span', { class: 'radio-station-name' },
+          labelled && h('span', { class: 'radio-station-sub' }, `HD${number + 1}`),
+          name),
+        chosen && h('span', { class: 'radio-bars', 'aria-hidden': 'true' },
+          h('i', {}), h('i', {}), h('i', {})),
+      ),
+      // One row of the frequency offers to forget it; the others are the same station.
+      editing && number === 0 && h('button', {
+        type: 'button',
+        class: 'radio-remove',
+        title: `Forget ${saved.name ?? saved.frequency.toFixed(1)}`,
+        'aria-label': `Forget ${saved.name ?? saved.frequency.toFixed(1)}`,
+        onclick: () => forget(saved.frequency, saved.name),
+      }, '\u00d7'),
+    );
+  }
+
   /** Stations that have been heard, kept so they can be picked rather than typed. */
   function remember(frequency, name) {
     const known = stations.find((candidate) => candidate.frequency === frequency);
@@ -4221,33 +4291,7 @@ function createRadioView(radio, player) {
     stationCount.textContent = stations.length ? ` · ${stations.length}` : '';
     stationButtons.classList.toggle('is-editing', editing);
 
-    stationButtons.replaceChildren(...stations.map((saved) => {
-      const chosen = listening?.frequency === saved.frequency;
-
-      return h('div', { class: 'radio-station', 'aria-current': String(chosen) },
-        h('button', {
-          type: 'button',
-          class: 'radio-station-pick',
-          disabled: scanning || editing,
-          onclick: () => listen(saved.frequency, 0),
-          // A station found before it gave its name is still a station; it is its frequency.
-        },
-          h('span', { class: `radio-station-logo${saved.logo ? '' : ' is-empty'}` },
-            saved.logo && h('img', { src: saved.logo, alt: '', loading: 'lazy' })),
-          h('b', {}, saved.frequency.toFixed(1)),
-          h('span', { class: 'radio-station-name' }, saved.name ?? ''),
-          chosen && h('span', { class: 'radio-bars', 'aria-hidden': 'true' },
-            h('i', {}), h('i', {}), h('i', {})),
-        ),
-        editing && h('button', {
-          type: 'button',
-          class: 'radio-remove',
-          title: `Forget ${saved.name ?? saved.frequency.toFixed(1)}`,
-          'aria-label': `Forget ${saved.name ?? saved.frequency.toFixed(1)}`,
-          onclick: () => forget(saved.frequency, saved.name),
-        }, '×'),
-      );
-    }));
+    stationButtons.replaceChildren(...stations.flatMap((saved) => rowsFor(saved, scanning)));
     stationButtons.hidden = stations.length === 0;
 
     // HD1 is always there; the rest are offered once the station has said it has them.
