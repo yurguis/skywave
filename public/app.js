@@ -3898,10 +3898,6 @@ function createRadioView(radio, player) {
   // station that was switched away from keeps reporting until it has stopped.
   let listening = null;
   let station = null;
-  // Which traffic map is on show. The widest, because a station centres its maps on its
-  // market rather than on the city: WFEZ draws from 25.90, -80.45, which puts the close view
-  // in the Everglades and only reaches Miami at the widest extent.
-  let trafficZoom = 2;
   let hintTimer = null;
   // Removing a station is kept behind this rather than offered on every row, where the
   // button sits under the thumb that meant to choose the station.
@@ -4427,30 +4423,33 @@ function createRadioView(radio, player) {
    * choose between them and the choice sticks while the station is on.
    */
   function trafficMap(station) {
-    const maps = station?.traffic ?? [];
+    const tiles = station?.traffic ?? [];
 
-    if (maps.length === 0) return null;
+    if (tiles.length === 0) return null;
 
-    const chosen = maps.find((m) => m.zoom === trafficZoom) ?? maps[maps.length - 1];
-    const names = { 0: 'Close', 1: 'City', 2: 'Wide' };
+    // Laid out as the grid they are, so the picture is the market rather than a ninth of
+    // it. They arrive over about ninety seconds and a cell is empty until its tile does.
+    const grid = h('div', { class: 'traffic-grid' });
 
-    const picture = h('img', {
-      class: 'traffic-map',
-      src: chosen.url,
-      alt: `Traffic around ${chosen.north.toFixed(2)}, ${chosen.west.toFixed(2)}`,
-    });
+    for (let row = 0; row < 3; row++) {
+      for (let column = 0; column < 3; column++) {
+        const tile = tiles.find((one) => one.row === row && one.column === column);
+
+        grid.append(tile
+          ? h('img', { class: 'traffic-tile', src: tile.url, alt: '', loading: 'lazy' })
+          : h('span', { class: 'traffic-tile is-waiting' }));
+      }
+    }
+
+    const drawn = Math.max(...tiles.map((one) => one.at));
 
     return h('div', { class: 'traffic card' },
       h('div', { class: 'traffic-head' },
         h('span', {}, 'Traffic'),
-        h('span', { class: 'muted' }, `drawn ${clockFromEpoch(chosen.at)}`),
-        h('span', { class: 'traffic-zooms' }, ...maps.map((m) => h('button', {
-          type: 'button',
-          class: m.zoom === chosen.zoom ? 'secondary is-on' : 'secondary',
-          onclick: () => { trafficZoom = m.zoom; render(); },
-        }, names[m.zoom] ?? String(m.zoom)))),
+        h('span', { class: 'muted' }, `drawn ${clockFromEpoch(drawn)}`),
+        tiles.length < 9 && h('span', { class: 'muted' }, `${tiles.length} of 9 tiles`),
       ),
-      picture);
+      h('div', { role: 'img', 'aria-label': 'Traffic map, drawn by the station' }, grid));
   }
 
   function clockFromEpoch(seconds) {
