@@ -96,8 +96,8 @@ if (preg_match('#^/radio/([a-f0-9]{16})/([^/]+)$#', $path, $match)) {
 
 // The logo a station sent on an earlier listen, kept so the next one can draw it at once
 // rather than showing a frequency on a grey square for the minute it takes to arrive again.
-if (preg_match('#^/radio-logo/(\d{2,3}(?:\.\d)?)$#', $path, $match)) {
-    $file = StationLogos::fromEnvironment()->pathFor((float) $match[1]);
+if (preg_match('#^/radio-logo/(\d{2,3}(?:\.\d)?)(?:/([0-7]))?$#', $path, $match)) {
+    $file = StationLogos::fromEnvironment()->pathFor((float) $match[1], (int) ($match[2] ?? 0));
 
     if ($file === null) {
         http_response_code(404);
