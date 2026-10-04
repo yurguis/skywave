@@ -921,6 +921,7 @@ class LiveStreams
 
         return $session['radio'] + $station + [
             'synchronized' => false,
+            'mode'         => Receiver::MODE_HD,
             'programs'     => [],
             'traffic'      => [],
             'weather'      => null,

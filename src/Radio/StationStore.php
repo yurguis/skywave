@@ -19,12 +19,21 @@ use RuntimeException;
  * sees the same stations, which a list kept in one browser never managed.
  *
  * Stations are keyed by frequency, held in kHz so that 90.5 is a whole number and two
- * spellings of it cannot become two stations.
+ * spellings of it cannot become two stations. AM lands in the same column without any risk
+ * of collision: the AM band is 530 to 1700 kHz and FM starts at 87500, so a key says which
+ * band it belongs to all by itself.
+ *
+ * Each station also remembers how it is best heard -- hd, fm or am -- which the key cannot
+ * say, because a frequency carrying HD Radio is an FM frequency too. Knowing a station has
+ * HD is never forgotten in favour of the analog underneath it.
  */
 class StationStore
 {
     /** A station heard again this recently is not written again just to say so. */
     private const FRESH_SECONDS = 3600;
+
+    /** Above this, in kHz, a key is an FM frequency; at or below it, an AM one. */
+    private const HIGHEST_AM_KHZ = 1700;
 
     private PDO $db;
 
@@ -52,6 +61,14 @@ class StationStore
                 heard_at INTEGER NOT NULL
             )'
         );
+
+        // Added after the fact, so a database made before analog existed gains it quietly.
+        // Everything already in one was found by nrsc5, which only ever heard HD Radio.
+        $columns = $this->db->query('PRAGMA table_info(radio_stations)')->fetchAll();
+
+        if (!in_array('mode', array_column($columns, 'name'), true)) {
+            $this->db->exec("ALTER TABLE radio_stations ADD COLUMN mode TEXT NOT NULL DEFAULT 'hd'");
+        }
     }
 
     /**
@@ -75,8 +92,10 @@ class StationStore
      * @param list<array{number: int, name: ?string, type: ?string}> $programs
      * @return bool whether anything was written
      */
-    public function save(float $frequency, ?string $name, array $programs = [], ?float $signal = null): bool
+    public function save(float $frequency, ?string $name, array $programs = [], ?float $signal = null, string $mode = Receiver::MODE_HD): bool
     {
+        $mode = Receiver::validateMode($mode);
+
         $key   = self::key($frequency);
         $known = $this->find($frequency);
         $name  = $name === null || trim($name) === '' ? null : trim($name);
@@ -93,13 +112,17 @@ class StationStore
         }
 
         $this->db->prepare(
-            'INSERT INTO radio_stations (frequency, name, programs, signal, heard_at)
-             VALUES (:frequency, :name, :programs, :signal, :now)
+            'INSERT INTO radio_stations (frequency, name, programs, signal, heard_at, mode)
+             VALUES (:frequency, :name, :programs, :signal, :now, :mode)
              ON CONFLICT (frequency) DO UPDATE SET
+                -- Never traded down: a station known to carry HD Radio still carries it
+                -- when somebody listens to the analog underneath.
+                mode = CASE WHEN radio_stations.mode = \'hd\' THEN \'hd\' ELSE excluded.mode END,
                 name = excluded.name, programs = excluded.programs,
                 signal = COALESCE(excluded.signal, signal), heard_at = excluded.heard_at'
         )->execute([
             'frequency' => $key,
+            'mode'      => $mode,
             'name'      => $name,
             'programs'  => json_encode(array_values($programs), JSON_INVALID_UTF8_SUBSTITUTE),
             'signal'    => $signal,
@@ -110,7 +133,7 @@ class StationStore
     }
 
     /**
-     * @return array{frequency: float, name: ?string, programs: list<array<string, mixed>>, signal: ?float, heardAt: int}|null
+     * @return array{frequency: float, mode: string, name: ?string, programs: list<array<string, mixed>>, signal: ?float, heardAt: int}|null
      */
     public function find(float $frequency): ?array
     {
@@ -122,7 +145,7 @@ class StationStore
     }
 
     /**
-     * @return list<array{frequency: float, name: ?string, programs: list<array<string, mixed>>, signal: ?float, heardAt: int}> up the dial
+     * @return list<array{frequency: float, mode: string, name: ?string, programs: list<array<string, mixed>>, signal: ?float, heardAt: int}> up the dial
      */
     public function all(): array
     {
@@ -146,18 +169,25 @@ class StationStore
 
     /**
      * @param array<string, mixed> $row
-     * @return array{frequency: float, name: ?string, programs: list<array<string, mixed>>, signal: ?float, heardAt: int}
+     * @return array{frequency: float, mode: string, name: ?string, programs: list<array<string, mixed>>, signal: ?float, heardAt: int}
      */
     private static function cast(array $row): array
     {
         $programs = json_decode((string) $row['programs'], true);
 
+        $kilohertz = (int) $row['frequency'];
+
         return [
-            'frequency' => round((int) $row['frequency'] / 1000, 1),
-            'name'      => $row['name'],
-            'programs'  => is_array($programs) ? array_values($programs) : [],
-            'signal'    => $row['signal'] === null ? null : (float) $row['signal'],
-            'heardAt'   => (int) $row['heard_at'],
+            // To the tenth of a MHz on FM, where 90.5 is a station; to the kilohertz on AM,
+            // where rounding 1140 to a tenth would make it 1100 and name another station.
+            'frequency' => $kilohertz <= self::HIGHEST_AM_KHZ
+                ? round($kilohertz / 1000, 3)
+                : round($kilohertz / 1000, 1),
+            'mode'     => (string) ($row['mode'] ?? Receiver::MODE_HD),
+            'name'     => $row['name'],
+            'programs' => is_array($programs) ? array_values($programs) : [],
+            'signal'   => $row['signal'] === null ? null : (float) $row['signal'],
+            'heardAt'  => (int) $row['heard_at'],
         ];
     }
 }
