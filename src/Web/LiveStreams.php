@@ -869,7 +869,25 @@ class LiveStreams
             is_array($station['traffic'] ?? null) ? $station['traffic'] : []
         )));
 
-        return $session['radio'] + $station + ['synchronized' => false, 'programs' => [], 'traffic' => []];
+        // The sheet of rain over the same ground, on the same terms. One comes for the whole
+        // market rather than one per tile, so there is a single picture to place.
+        $weather = is_array($station['weather'] ?? null) ? $station['weather'] : [];
+        $sheet   = is_string($weather['file'] ?? null) ? $weather['file'] : null;
+
+        $station['weather'] = null;
+
+        if ($sheet !== null && $this->resolvePicture($session['id'], $sheet) !== null) {
+            unset($weather['file']);
+
+            $station['weather'] = ['url' => "/radio/{$session['id']}/" . rawurlencode($sheet)] + $weather;
+        }
+
+        return $session['radio'] + $station + [
+            'synchronized' => false,
+            'programs'     => [],
+            'traffic'      => [],
+            'weather'      => null,
+        ];
     }
 
     private function isRunning(int $pid): bool

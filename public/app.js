@@ -3902,6 +3902,7 @@ function createRadioView(radio, player) {
   // Removing a station is kept behind this rather than offered on every row, where the
   // button sits under the thumb that meant to choose the station.
   let editing = false;
+  let rainShown = true;
   let savedLogo = null;
   const loggedLogos = new Set();
   // The server keeps the stations when it has a database to keep them in, so every browser
@@ -4470,12 +4471,16 @@ function createRadioView(radio, player) {
   }
 
   /**
-   * The traffic map a station draws, when it draws one.
+   * The traffic map a station draws, and the rain it draws over it.
    *
-   * Only some stations carry it, so this is nothing at all on most of them. The picture is
-   * already a map -- streets, names and the roads coloured by how they are moving -- so it
-   * is shown as it arrived. Three of them come, the same place at three extents; the buttons
-   * choose between them and the choice sticks while the station is on.
+   * Only some stations carry either, so this is nothing at all on most of them. The picture
+   * is already a map -- streets, names and the roads coloured by how they are moving -- so
+   * it is shown as it arrived: nine tiles in the grid they belong to, and the rain, which
+   * comes as one transparent sheet the size of the whole grid, laid straight over them.
+   *
+   * Rain is shown when the station sends it, and the button turns it off. Whether it lands
+   * on the right streets has not been proved: the broadcast's own corners are wrong for the
+   * tiles, so only rain over somewhere recognisable can settle it.
    */
   function trafficMap(station) {
     const tiles = station?.traffic ?? [];
@@ -4496,6 +4501,12 @@ function createRadioView(radio, player) {
       }
     }
 
+    const rain = station?.weather ?? null;
+
+    if (rain !== null && rainShown) {
+      grid.append(h('img', { class: 'traffic-rain', src: rain.url, alt: '', loading: 'lazy' }));
+    }
+
     const drawn = Math.max(...tiles.map((one) => one.at));
 
     return h('div', { class: 'traffic card' },
@@ -4503,8 +4514,20 @@ function createRadioView(radio, player) {
         h('span', {}, 'Traffic'),
         h('span', { class: 'muted' }, `drawn ${clockFromEpoch(drawn)}`),
         tiles.length < 9 && h('span', { class: 'muted' }, `${tiles.length} of 9 tiles`),
+        rain !== null && h('button', {
+          type: 'button',
+          class: 'radio-linkish traffic-rain-toggle',
+          'aria-pressed': String(rainShown),
+          title: `Rain drawn ${clockFromEpoch(rain.at)}`,
+          onclick: () => { rainShown = !rainShown; render(); },
+        }, 'Rain'),
       ),
-      h('div', { role: 'img', 'aria-label': 'Traffic map, drawn by the station' }, grid));
+      h('div', {
+        role: 'img',
+        'aria-label': rain !== null && rainShown
+          ? 'Traffic map with the rain the station drew over it'
+          : 'Traffic map, drawn by the station',
+      }, grid));
   }
 
   function clockFromEpoch(seconds) {

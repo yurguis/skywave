@@ -376,6 +376,18 @@ reads what nrsc5 says about the station as it goes: its name and slogan, the tit
 artist, how strong the signal is, which programs it carries (HD1, HD2 and so on), and the
 album cover or logo when it sends one.
 
+Some stations also broadcast maps, through the HERE data service. Skywave shows them when
+they come: nine tiles that assemble into one picture of the market, with the roads coloured
+by how they are moving, and over it the sheet of rain the station draws for the same ground,
+which the **Rain** switch turns off. Most stations send neither, and nothing appears for them.
+
+The rain is placed on the traffic by size rather than by position: the sheet is 600x599 and
+the assembled tiles are 600x600, which is what the broadcaster appears to intend. The corners
+the broadcast prints alongside each picture are not trustworthy -- the nine tiles claim nine
+nested boxes around a single centre, and one of them claims a northern edge south of a city
+it plainly shows -- so they are ignored here, and whether the rain falls on exactly the right
+streets has not been confirmed against a rainy day.
+
 It is off until it is told where the dongle is:
 
 | Variable | Purpose |
@@ -659,8 +671,7 @@ anyone on the path.
 - **One station per dongle.** A dongle hears one frequency and nrsc5 plays one program of
   it, so everyone listening hears the same thing; asking for another station while somebody
   else is listening is refused rather than changing theirs, and a scan takes the dongle
-  from everyone until it ends. Radio is not recorded, has no guide, and its traffic and
-  weather maps are not shown.
+  from everyone until it ends. Radio is not recorded and has no guide.
 - **Nothing is ever deleted for you.** The Recordings tab warns when the drive runs low and
   refuses to start a recording below 2 GB free, but making room is yours to do.
 - **Every conversion runs on this machine.** HDHomeRun tuners do not transcode, so each

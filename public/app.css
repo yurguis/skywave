@@ -242,8 +242,8 @@ button:disabled { opacity: .55; cursor: progress; }
 .signal-meter.yellow i.on { background: var(--yellow); }
 .signal-meter.red i.on { background: var(--red); }
 
-/* The traffic map a station draws. The picture is already a map, so it is shown as it came;
-   the buttons pick which of the three extents to look at. */
+/* The traffic map a station draws, with the rain it draws over it. Both pictures are
+   already maps, so they are shown as they came. */
 .traffic { margin-top: 12px; }
 
 .traffic-head {
@@ -261,6 +261,7 @@ button:disabled { opacity: .55; cursor: progress; }
 .traffic-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
+  position: relative;
   width: 100%;
   max-width: 420px;
   aspect-ratio: 1;
@@ -271,6 +272,27 @@ button:disabled { opacity: .55; cursor: progress; }
 
 .traffic-tile { display: block; width: 100%; aspect-ratio: 1; }
 .traffic-tile.is-waiting { background: var(--surface-2); }
+
+/* The rain: one transparent sheet the station draws for the whole market, 600x599 against
+   the grid's 600x600, so it goes over the tiles at the same scale rather than into a cell
+   of its own. Stretched the one pixel to square, which is below seeing. */
+.traffic-rain {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+}
+
+/* The rain switch says whether the sheet is on even when there is no rain to see, which on
+   a clear day is most of the time: muted when off, the accent when on. Without this the two
+   states are the same picture and the same button.
+
+   Scoped through .traffic-head so it beats .radio-linkish, which sets the same property at
+   the same specificity further down the file and would otherwise win on order alone. */
+.traffic-head .traffic-rain-toggle { color: var(--muted); }
+.traffic-head .traffic-rain-toggle[aria-pressed="true"] { color: var(--accent); }
 
 /* Drawn small and square, and scaled up: 200 pixels is all the station sends. */
 
