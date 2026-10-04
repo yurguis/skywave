@@ -3898,10 +3898,6 @@ function createRadioView(radio, player) {
   // station that was switched away from keeps reporting until it has stopped.
   let listening = null;
   let station = null;
-  // Which traffic map is on show. The widest, because a station centres its maps on its
-  // market rather than on the city: WFEZ draws from 25.90, -80.45, which puts the close view
-  // in the Everglades and only reaches Miami at the widest extent.
-  let trafficZoom = 2;
   let hintTimer = null;
   // Removing a station is kept behind this rather than offered on every row, where the
   // button sits under the thumb that meant to choose the station.
@@ -4104,6 +4100,75 @@ function createRadioView(radio, player) {
     refreshStations();
   }
 
+
+  /**
+   * A frequency carries one station or several, and a subchannel is its own station to
+   * whoever is listening: its own name, often its own logo, and nothing to say it is the
+   * second of anything. So each gets a row and can be tuned without going through HD1.
+   */
+  function rowsFor(saved, scanning) {
+    const programs = Array.isArray(saved.programs) ? saved.programs : [];
+
+    if (programs.length < 2) return [stationRow(saved, programs[0] ?? null, scanning, false)];
+
+    return programs.map((program) => stationRow(saved, program, scanning, true));
+  }
+
+  /**
+   * What a subchannel is called.
+   *
+   * Most name themselves usefully -- Magic 93.9, Fox Sports 940, Israeli Radio -- and the
+   * rest answer "HD2", or the call sign with "HD2" after it, which says only what the pill
+   * beside it already says. Those fall back to the station's own name.
+   */
+  function programName(saved, program) {
+    const given = (program?.name ?? '').trim();
+
+    // "HD2", "HD-1", "WRTO-HD1", "WPOW-HD2": a call sign and the number, which the pill
+    // beside it already carries. The call sign in the name is not always the station's own,
+    // so anything in front of the HD is allowed for rather than matched against it.
+    if (given === '' || /^(?:[\w@.]+[\s-]+)?hd-?\d$/i.test(given)) {
+      return saved.name ?? '';
+    }
+
+    return given;
+  }
+
+  function stationRow(saved, program, scanning, labelled) {
+    const number = program?.number ?? 0;
+    const chosen = listening?.frequency === saved.frequency && listening?.program === number;
+    const logo = program?.logo ?? (number === 0 ? saved.logo : null) ?? null;
+    const name = labelled ? programName(saved, program) : (saved.name ?? '');
+    const what = `${saved.frequency.toFixed(1)}${labelled ? ` HD${number + 1}` : ''}${name ? ` ${name}` : ''}`;
+
+    return h('div', { class: 'radio-station', 'aria-current': String(chosen) },
+      h('button', {
+        type: 'button',
+        class: 'radio-station-pick',
+        disabled: scanning || editing,
+        title: `Listen to ${what}`,
+        onclick: () => listen(saved.frequency, number),
+        // A station found before it gave its name is still a station; it is its frequency.
+      },
+        h('span', { class: `radio-station-logo${logo ? '' : ' is-empty'}` },
+          logo && h('img', { src: logo, alt: '', loading: 'lazy' })),
+        h('b', {}, saved.frequency.toFixed(1)),
+        h('span', { class: 'radio-station-name' },
+          labelled && h('span', { class: 'radio-station-sub' }, `HD${number + 1}`),
+          name),
+        chosen && h('span', { class: 'radio-bars', 'aria-hidden': 'true' },
+          h('i', {}), h('i', {}), h('i', {})),
+      ),
+      // One row of the frequency offers to forget it; the others are the same station.
+      editing && number === 0 && h('button', {
+        type: 'button',
+        class: 'radio-remove',
+        title: `Forget ${saved.name ?? saved.frequency.toFixed(1)}`,
+        'aria-label': `Forget ${saved.name ?? saved.frequency.toFixed(1)}`,
+        onclick: () => forget(saved.frequency, saved.name),
+      }, '\u00d7'),
+    );
+  }
   /** The logo kept for one subchannel, or the station's where that subchannel has none. */
   function logoKeptFor(frequency, program) {
     const saved = stations.find((candidate) => candidate.frequency === frequency);
@@ -4233,33 +4298,7 @@ function createRadioView(radio, player) {
     stationCount.textContent = stations.length ? ` · ${stations.length}` : '';
     stationButtons.classList.toggle('is-editing', editing);
 
-    stationButtons.replaceChildren(...stations.map((saved) => {
-      const chosen = listening?.frequency === saved.frequency;
-
-      return h('div', { class: 'radio-station', 'aria-current': String(chosen) },
-        h('button', {
-          type: 'button',
-          class: 'radio-station-pick',
-          disabled: scanning || editing,
-          onclick: () => listen(saved.frequency, 0),
-          // A station found before it gave its name is still a station; it is its frequency.
-        },
-          h('span', { class: `radio-station-logo${saved.logo ? '' : ' is-empty'}` },
-            saved.logo && h('img', { src: saved.logo, alt: '', loading: 'lazy' })),
-          h('b', {}, saved.frequency.toFixed(1)),
-          h('span', { class: 'radio-station-name' }, saved.name ?? ''),
-          chosen && h('span', { class: 'radio-bars', 'aria-hidden': 'true' },
-            h('i', {}), h('i', {}), h('i', {})),
-        ),
-        editing && h('button', {
-          type: 'button',
-          class: 'radio-remove',
-          title: `Forget ${saved.name ?? saved.frequency.toFixed(1)}`,
-          'aria-label': `Forget ${saved.name ?? saved.frequency.toFixed(1)}`,
-          onclick: () => forget(saved.frequency, saved.name),
-        }, '×'),
-      );
-    }));
+    stationButtons.replaceChildren(...stations.flatMap((saved) => rowsFor(saved, scanning)));
     stationButtons.hidden = stations.length === 0;
 
     // HD1 is always there; the rest are offered once the station has said it has them.
@@ -4439,30 +4478,33 @@ function createRadioView(radio, player) {
    * choose between them and the choice sticks while the station is on.
    */
   function trafficMap(station) {
-    const maps = station?.traffic ?? [];
+    const tiles = station?.traffic ?? [];
 
-    if (maps.length === 0) return null;
+    if (tiles.length === 0) return null;
 
-    const chosen = maps.find((m) => m.zoom === trafficZoom) ?? maps[maps.length - 1];
-    const names = { 0: 'Close', 1: 'City', 2: 'Wide' };
+    // Laid out as the grid they are, so the picture is the market rather than a ninth of
+    // it. They arrive over about ninety seconds and a cell is empty until its tile does.
+    const grid = h('div', { class: 'traffic-grid' });
 
-    const picture = h('img', {
-      class: 'traffic-map',
-      src: chosen.url,
-      alt: `Traffic around ${chosen.north.toFixed(2)}, ${chosen.west.toFixed(2)}`,
-    });
+    for (let row = 0; row < 3; row++) {
+      for (let column = 0; column < 3; column++) {
+        const tile = tiles.find((one) => one.row === row && one.column === column);
+
+        grid.append(tile
+          ? h('img', { class: 'traffic-tile', src: tile.url, alt: '', loading: 'lazy' })
+          : h('span', { class: 'traffic-tile is-waiting' }));
+      }
+    }
+
+    const drawn = Math.max(...tiles.map((one) => one.at));
 
     return h('div', { class: 'traffic card' },
       h('div', { class: 'traffic-head' },
         h('span', {}, 'Traffic'),
-        h('span', { class: 'muted' }, `drawn ${clockFromEpoch(chosen.at)}`),
-        h('span', { class: 'traffic-zooms' }, ...maps.map((m) => h('button', {
-          type: 'button',
-          class: m.zoom === chosen.zoom ? 'secondary is-on' : 'secondary',
-          onclick: () => { trafficZoom = m.zoom; render(); },
-        }, names[m.zoom] ?? String(m.zoom)))),
+        h('span', { class: 'muted' }, `drawn ${clockFromEpoch(drawn)}`),
+        tiles.length < 9 && h('span', { class: 'muted' }, `${tiles.length} of 9 tiles`),
       ),
-      picture);
+      h('div', { role: 'img', 'aria-label': 'Traffic map, drawn by the station' }, grid));
   }
 
   function clockFromEpoch(seconds) {

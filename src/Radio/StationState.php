@@ -294,7 +294,7 @@ final class StationState
     }
 
     /**
-     * The traffic maps on offer, closest first.
+     * The tiles of the traffic map, in reading order: west to east, north to south.
      *
      * @return list<array<string, mixed>>
      */
@@ -314,9 +314,16 @@ final class StationState
      * corners say where to put it. It is written beside the playlist under the time it was
      * made and its own name, which is how it is found again.
      *
-     * Nine arrive, the same place at nine extents -- three heights by three widths. The
-     * square ones, where both halves of the name agree, are the ones worth offering: close
-     * in, the city, and the whole metro area. The stretched ones are not.
+     * Nine arrive and they are a three by three grid of tiles, not nine views of one place:
+     * trafficMap_ROW_COLUMN, row 0 north to row 2 south, column 0 west to column 2 east.
+     * Assembled they are 600x600 over the market. Pinned by eye on 104.3: 0_0 is Alligator
+     * Alley, 0_2 is Fort Lauderdale, 2_0 is Fortymile Bend, 2_2 is Miami and Key Biscayne.
+     *
+     * The corners nrsc5 prints are not this tile's. They are nested -- all nine share one
+     * centre and grow 27, 82 and 137 km -- which reads like three zoom levels and is not
+     * what the pictures are. 0_2 claims a northern edge of 26.03 and plainly shows Fort
+     * Lauderdale, which is north of it. They are kept here because the broadcast sent them,
+     * and used for nothing.
      */
     private function applyHereImage(string $fields): void
     {
@@ -328,11 +335,7 @@ final class StationState
 
         // Weather is a transparent sheet of rain and needs a map under it to mean anything,
         // which is a different piece of work; traffic stands on its own.
-        if ($match[1] !== 'TRAFFIC' || !preg_match('/^trafficMap_(\d)_(\d)_/', $match[7], $zoom)) {
-            return;
-        }
-
-        if ($zoom[1] !== $zoom[2]) {
+        if ($match[1] !== 'TRAFFIC' || !preg_match('/^trafficMap_(\d)_(\d)_/', $match[7], $cell)) {
             return;
         }
 
@@ -342,14 +345,15 @@ final class StationState
             return;
         }
 
-        $this->traffic[(int) $zoom[1]] = [
-            'zoom'  => (int) $zoom[1],
-            'file'  => $at . '_' . $match[7],
-            'at'    => $at,
-            'north' => (float) $match[3],
-            'west'  => (float) $match[4],
-            'south' => (float) $match[5],
-            'east'  => (float) $match[6],
+        $this->traffic["$cell[1]_$cell[2]"] = [
+            'row'    => (int) $cell[1],
+            'column' => (int) $cell[2],
+            'file'   => $at . '_' . $match[7],
+            'at'     => $at,
+            'north'  => (float) $match[3],
+            'west'   => (float) $match[4],
+            'south'  => (float) $match[5],
+            'east'   => (float) $match[6],
         ];
     }
 

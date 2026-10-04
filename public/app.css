@@ -254,19 +254,25 @@ button:disabled { opacity: .55; cursor: progress; }
   font-size: 12.5px;
 }
 
-.traffic-zooms { display: inline-flex; gap: 4px; margin-left: auto; }
-.traffic-zooms button { padding: 2px 9px; font-size: 12px; }
-.traffic-zooms button.is-on { border-color: var(--accent); color: var(--accent); }
-
-/* Drawn small and square, and scaled up: 200 pixels is all the station sends. */
-.traffic-map {
+/* The nine tiles are one picture, laid out as the grid they are: row 0 north, column 0
+   west. No gap between them -- a seam would read as a road. They arrive over about ninety
+   seconds, so a cell that has not come yet holds its place rather than collapsing the
+   others out of line. */
+.traffic-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   width: 100%;
   max-width: 420px;
   aspect-ratio: 1;
   border-radius: 6px;
+  overflow: hidden;
   background: var(--surface-2);
-  image-rendering: auto;
 }
+
+.traffic-tile { display: block; width: 100%; aspect-ratio: 1; }
+.traffic-tile.is-waiting { background: var(--surface-2); }
+
+/* Drawn small and square, and scaled up: 200 pixels is all the station sends. */
 
 .kv { display: grid; grid-template-columns: 110px 1fr; gap: 2px 8px; font-size: 12.5px; }
 .kv dt { color: var(--muted); }
@@ -1494,6 +1500,20 @@ button.record.is-recording,
 }
 
 .radio-station-name { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Which subchannel this row is, where a frequency carries more than one. */
+.radio-station-sub {
+  display: inline-block;
+  margin-right: var(--space-3);
+  padding: 0 var(--space-3);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+.radio-station[aria-current="true"] .radio-station-sub { background: color-mix(in srgb, var(--accent) 26%, transparent); color: var(--accent); }
 .radio-station[aria-current="true"] .radio-station-name { color: var(--text); }
 .radio-station-pick:disabled { opacity: 1; cursor: default; }
 

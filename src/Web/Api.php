@@ -937,9 +937,26 @@ class Api
         return array_map(static function (array $station) use ($logos): array {
             $frequency = $station['frequency'] ?? null;
 
-            $station['logo'] = is_numeric($frequency) && $logos->pathFor((float) $frequency) !== null
-                ? '/radio-logo/' . number_format((float) $frequency, 1, '.', '')
-                : null;
+            if (!is_numeric($frequency)) {
+                $station['logo'] = null;
+
+                return $station;
+            }
+
+            $dial = number_format((float) $frequency, 1, '.', '');
+            $at   = static fn (int $program): ?string => $logos->pathFor((float) $frequency, $program) === null
+                ? null
+                : "/radio-logo/$dial/$program";
+
+            $station['logo'] = $at(0);
+
+            // A subchannel is its own station to a listener -- a different name, often a
+            // different logo -- so each carries its own rather than borrowing HD1's.
+            $station['programs'] = array_map(static function (array $program) use ($at): array {
+                $program['logo'] = is_int($program['number'] ?? null) ? $at($program['number']) : null;
+
+                return $program;
+            }, is_array($station['programs'] ?? null) ? $station['programs'] : []);
 
             return $station;
         }, $stations);
