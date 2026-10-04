@@ -129,6 +129,80 @@ class RadioApiTest extends TestCase
         $this->assertSame(404, $this->api(null)->handle(Request::create('/api/radio/scan', 'GET'))->getStatusCode());
     }
 
+    public function testTheRainSheetIsOfferedBesideTheTrafficTiles(): void
+    {
+        // What the listener's own process has written down, and what nrsc5 has put on disk
+        // beside it. Both pictures are offered as urls the page can fetch; a picture named
+        // but not yet written is withheld, because the page would only get a broken image.
+        $streams = new LiveStreams($this->directory);
+        $id      = '0123456789abcdef';
+
+        mkdir("$this->directory/$id");
+        touch("$this->directory/$id/100_trafficMap_1_1_znz1.png");
+        touch("$this->directory/$id/100_WeatherImage_0_0_znz1.png");
+
+        file_put_contents("$this->directory/$id/radio.json", (string) json_encode([
+            'traffic' => [
+                ['row' => 1, 'column' => 1, 'file' => '100_trafficMap_1_1_znz1.png', 'at' => 100],
+                ['row' => 0, 'column' => 0, 'file' => '100_trafficMap_0_0_znz1.png', 'at' => 100],
+            ],
+            'weather' => ['file' => '100_WeatherImage_0_0_znz1.png', 'at' => 100, 'north' => 26.3577],
+        ]));
+
+        file_put_contents("$this->directory/$id/session.json", (string) json_encode([
+            'id'        => $id,
+            'host'      => 'radio',
+            'tuner'     => null,
+            'channel'   => '104.3 FM HD1',
+            'program'   => 0,
+            'pid'       => 0,
+            'startedAt' => time(),
+            'endedAt'   => time(),
+            'viewers'   => [],
+            'audio'     => [],
+            'radio'     => ['frequency' => 104.3, 'program' => 0],
+        ]));
+
+        $station = $streams->all()[0]['radio'];
+
+        // The tile that is on disk, and not the one that is only spoken of.
+        $this->assertCount(1, $station['traffic']);
+        $this->assertSame("/radio/$id/100_trafficMap_1_1_znz1.png", $station['traffic'][0]['url']);
+
+        $this->assertSame("/radio/$id/100_WeatherImage_0_0_znz1.png", $station['weather']['url']);
+        $this->assertSame(26.3577, $station['weather']['north']);
+        $this->assertArrayNotHasKey('file', $station['weather'], 'the page is given a url, not a path');
+    }
+
+    public function testRainThatHasNotLandedYetIsNotOffered(): void
+    {
+        $streams = new LiveStreams($this->directory);
+        $id      = 'fedcba9876543210';
+
+        mkdir("$this->directory/$id");
+
+        // Named by nrsc5 but not yet written out, which is most of the time it is arriving.
+        file_put_contents("$this->directory/$id/radio.json", (string) json_encode([
+            'weather' => ['file' => '100_WeatherImage_0_0_znz1.png', 'at' => 100],
+        ]));
+
+        file_put_contents("$this->directory/$id/session.json", (string) json_encode([
+            'id'        => $id,
+            'host'      => 'radio',
+            'tuner'     => null,
+            'channel'   => '104.3 FM HD1',
+            'program'   => 0,
+            'pid'       => 0,
+            'startedAt' => time(),
+            'endedAt'   => time(),
+            'viewers'   => [],
+            'audio'     => [],
+            'radio'     => ['frequency' => 104.3, 'program' => 0],
+        ]));
+
+        $this->assertNull($streams->all()[0]['radio']['weather']);
+    }
+
     public function testOnlyAPictureTheStationSentCanBeServed(): void
     {
         $streams = new LiveStreams($this->directory);

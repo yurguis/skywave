@@ -39,8 +39,11 @@ final class StationState
     private ?string $alert     = null;
     private ?string $error     = null;
     private ?float $bitrate    = null;
-    /** @var array<int, array<string, mixed>> traffic maps the station drew, by how far out they reach */
+    /** @var array<string, array<string, mixed>> the tiles of the traffic map, by row and column */
     private array $traffic = [];
+
+    /** @var array<string, mixed>|null the sheet of rain drawn over the same ground, if one came */
+    private ?array $weather = null;
 
     /** HDC's coding mode, as the audio itself reports it. Every station is HDC; the mode varies. */
     private ?int $codecMode = null;
@@ -122,6 +125,7 @@ final class StationState
             'bitrate'      => $this->bitrate,
             'codecMode'    => $this->codecMode,
             'traffic'      => $this->trafficMaps(),
+            'weather'      => $this->weather,
             'mer'          => $this->mer,
             'ber'          => $this->ber,
             'gain'         => $this->gain,
@@ -314,16 +318,28 @@ final class StationState
      * corners say where to put it. It is written beside the playlist under the time it was
      * made and its own name, which is how it is found again.
      *
-     * Nine arrive and they are a three by three grid of tiles, not nine views of one place:
-     * trafficMap_ROW_COLUMN, row 0 north to row 2 south, column 0 west to column 2 east.
-     * Assembled they are 600x600 over the market. Pinned by eye on 104.3: 0_0 is Alligator
-     * Alley, 0_2 is Fort Lauderdale, 2_0 is Fortymile Bend, 2_2 is Miami and Key Biscayne.
+     * Traffic arrives as nine tiles, a three by three grid rather than nine views of one
+     * place: trafficMap_ROW_COLUMN, row 0 north to row 2 south, column 0 west to column 2
+     * east, 200 pixels square each and 600x600 assembled. Pinned by eye on 104.3: 0_0 is
+     * Alligator Alley, 0_2 is Fort Lauderdale, 2_0 is Fortymile Bend, 2_2 is Miami and Key
+     * Biscayne.
      *
-     * The corners nrsc5 prints are not this tile's. They are nested -- all nine share one
-     * centre and grow 27, 82 and 137 km -- which reads like three zoom levels and is not
-     * what the pictures are. 0_2 claims a northern edge of 26.03 and plainly shows Fort
-     * Lauderdale, which is north of it. They are kept here because the broadcast sent them,
-     * and used for nothing.
+     * Weather arrives as one transparent sheet of rain for the whole market, 600x599, which
+     * is the assembled grid's size to within a pixel. That is why it is kept: it has no
+     * streets of its own and means nothing alone, but it is drawn to go over the traffic
+     * tiles, and the page lays it there.
+     *
+     * Only one weather sheet has ever been seen, so it is held as one picture. Its name
+     * carries an 0_0 the way a tile would, so the station may be able to tile it; if it ever
+     * does, the newest arrival wins and the overlay will be wrong in a way that is plain to
+     * look at.
+     *
+     * The corners nrsc5 prints for the tiles are not that tile's. They are nested -- all
+     * nine share one centre and grow 27, 82 and 137 km -- which reads like three zoom levels
+     * and is not what the pictures are. 0_2 claims a northern edge of 26.03 and plainly
+     * shows Fort Lauderdale, which is north of it. So the corners cannot say whether the
+     * rain lands on the right streets, and nothing here uses them: both pictures are placed
+     * by their pixels, and the alignment wants a rainy capture to confirm it.
      */
     private function applyHereImage(string $fields): void
     {
@@ -333,28 +349,35 @@ final class StationState
             return;
         }
 
-        // Weather is a transparent sheet of rain and needs a map under it to mean anything,
-        // which is a different piece of work; traffic stands on its own.
-        if ($match[1] !== 'TRAFFIC' || !preg_match('/^trafficMap_(\d)_(\d)_/', $match[7], $cell)) {
-            return;
-        }
-
         $at = strtotime($match[2]);
 
         if ($at === false) {
             return;
         }
 
+        $drawing = [
+            'file'  => $at . '_' . $match[7],
+            'at'    => $at,
+            'north' => (float) $match[3],
+            'west'  => (float) $match[4],
+            'south' => (float) $match[5],
+            'east'  => (float) $match[6],
+        ];
+
+        if ($match[1] === 'WEATHER') {
+            $this->weather = $drawing;
+
+            return;
+        }
+
+        if ($match[1] !== 'TRAFFIC' || !preg_match('/^trafficMap_(\d)_(\d)_/', $match[7], $cell)) {
+            return;
+        }
+
         $this->traffic["$cell[1]_$cell[2]"] = [
             'row'    => (int) $cell[1],
             'column' => (int) $cell[2],
-            'file'   => $at . '_' . $match[7],
-            'at'     => $at,
-            'north'  => (float) $match[3],
-            'west'   => (float) $match[4],
-            'south'  => (float) $match[5],
-            'east'   => (float) $match[6],
-        ];
+        ] + $drawing;
     }
 
     /**

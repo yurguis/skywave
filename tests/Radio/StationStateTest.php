@@ -133,15 +133,35 @@ class StationStateTest extends TestCase
         $this->assertSame('1790971428_trafficMap_0_0_znz1.png', $maps[0]['file'], 'the later one');
     }
 
-    public function testTheWeatherSheetIsNotOfferedAsATrafficMap(): void
+    public function testTheWeatherSheetIsKeptApartFromTheTrafficMap(): void
     {
-        // It is a transparent overlay of rain and needs a map beneath it, which traffic
-        // does not. Kept out until there is somewhere to put it.
+        // Line as nrsc5 really prints it, from 93.1 WFEZ. One sheet of rain comes for the
+        // whole market, so it is not a tenth tile and must not be offered as one.
         $state = $this->heard([
             '19:59:46 HERE Image: type=WEATHER, seq=3, n1=7038, n2=7038, time=2026-10-02T19:57:50Z, lat1=26.35770, lon1=-80.85939, lat2=25.53380, lon2=-80.03540, name=WeatherImage_0_0_znz1.png, size=3009',
         ]);
 
-        $this->assertSame([], $state->toArray()['traffic']);
+        $station = $state->toArray();
+
+        $this->assertSame([], $station['traffic']);
+        $this->assertSame('1790971070_WeatherImage_0_0_znz1.png', $station['weather']['file']);
+        $this->assertSame(26.35770, $station['weather']['north']);
+        $this->assertSame(-80.03540, $station['weather']['east']);
+    }
+
+    public function testANewerWeatherSheetReplacesTheOneItRedraws(): void
+    {
+        $state = $this->heard([
+            '19:59:46 HERE Image: type=WEATHER, seq=3, n1=7038, n2=7038, time=2026-10-02T19:57:50Z, lat1=26.35770, lon1=-80.85939, lat2=25.53380, lon2=-80.03540, name=WeatherImage_0_0_znz1.png, size=3009',
+            '20:04:46 HERE Image: type=WEATHER, seq=4, n1=7038, n2=7038, time=2026-10-02T20:03:50Z, lat1=26.35770, lon1=-80.85939, lat2=25.53380, lon2=-80.03540, name=WeatherImage_0_0_znz1.png, size=3120',
+        ]);
+
+        $this->assertSame('1790971430_WeatherImage_0_0_znz1.png', $state->toArray()['weather']['file'], 'the later one');
+    }
+
+    public function testAStationThatDrawsNoRainOffersNone(): void
+    {
+        $this->assertNull($this->heard([])->toArray()['weather']);
     }
 
     public function testOnlyAChangeIsWorthTelling(): void
