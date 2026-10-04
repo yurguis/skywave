@@ -87,14 +87,37 @@ class StationStateTest extends TestCase
 
         $maps = $state->toArray()['traffic'];
 
-        // The stretched one, 1_0, is not offered: only the square extents are.
-        $this->assertCount(2, $maps);
-        $this->assertSame([0, 1], array_column($maps, 'zoom'));
+        // Every tile is kept: nine of them make one picture, and a missing one is a hole
+        // in it rather than a view nobody wanted.
+        $this->assertCount(3, $maps);
+        $this->assertSame([[0, 0], [1, 0], [1, 1]], array_map(
+            static fn (array $tile): array => [$tile['row'], $tile['column']],
+            $maps,
+        ), 'in reading order, by row then column');
 
         // Named by the time it was made, which is how nrsc5 wrote it to disk.
         $this->assertSame('1790971068_trafficMap_0_0_znz1.png', $maps[0]['file']);
-        $this->assertSame(26.02840, $maps[0]['north']);
-        $this->assertSame(-80.31005, $maps[0]['east']);
+    }
+
+    public function testEveryTileOfTheTrafficGridIsKeptInReadingOrder(): void
+    {
+        $lines = [];
+
+        // Deliberately out of order, as they arrive: the grid is assembled by name, not by
+        // the sequence the broadcast happened to send them in.
+        foreach ([[2, 2], [0, 1], [1, 2], [0, 0], [2, 0], [1, 1], [0, 2], [2, 1], [1, 0]] as [$row, $column]) {
+            $lines[] = "19:59:54 HERE Image: type=TRAFFIC, seq=6, n1=1, n2=9, time=2026-10-02T19:57:48Z, "
+                . "lat1=26.02840, lon1=-80.58471, lat2=25.78134, lon2=-80.31005, "
+                . "name=trafficMap_{$row}_{$column}_znz1.png, size=2064";
+        }
+
+        $maps = $this->heard($lines)->toArray()['traffic'];
+
+        $this->assertCount(9, $maps);
+        $this->assertSame(
+            ['0_0', '0_1', '0_2', '1_0', '1_1', '1_2', '2_0', '2_1', '2_2'],
+            array_map(static fn (array $tile): string => "{$tile['row']}_{$tile['column']}", $maps),
+        );
     }
 
     public function testANewerTrafficMapReplacesTheOneItRedraws(): void
