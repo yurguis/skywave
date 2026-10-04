@@ -10,7 +10,7 @@ internet connection.
 - **Browse** what is on, read from the broadcast's own guide tables, with station logos.
 - **Record** a program from the guide and play it back in the same player.
 - **Analyze** the transport stream itself: programs, bitstreams and tables.
-- **Listen** to HD Radio stations through an RTL-SDR dongle, with the station's name and
+- **Listen** to HD Radio, analog FM and AM stations through an RTL-SDR dongle, with the station's name and
   what is playing. This part is optional and needs [nrsc5](#hd-radio).
 
 Start it with [Docker](#docker), or run it straight from PHP.
@@ -388,6 +388,46 @@ nested boxes around a single centre, and one of them claims a northern edge sout
 it plainly shows -- so they are ignored here, and whether the rain falls on exactly the right
 streets has not been confirmed against a rainy day.
 
+## Analog AM and FM
+
+HD Radio is only part of the dial. Most FM stations carry no HD at all, and a station whose
+HD signal is too weak to decode is often perfectly listenable in analog: HD Radio's data
+needs a far better signal than RDS does, so a station that will not decode a single
+subchannel can still arrive in analog with its name and the song on it.
+
+Analog needs two more programs, built the way nrsc5 is:
+
+```bash
+docker/analog/build-analog.sh
+docker compose up -d
+```
+
+That builds `rtlanalog`, which demodulates AM and FM from the dongle, and `redsea`, which
+reads RDS off the FM multiplex. See [docker/analog/README.md](docker/analog/README.md).
+Without them the radio still works and offers HD Radio alone; the page never shows a band
+it cannot tune.
+
+The page then picks between three things:
+
+| | What it is |
+|---|---|
+| **HD FM** | Digital HD Radio, decoded by nrsc5. Subchannels, artwork, traffic and weather maps |
+| **FM** | Analog FM, with the station's name and the song from RDS. No pictures |
+| **AM** | Analog AM. No name, no song, nothing: AM carries nothing that describes itself |
+
+The station's name on analog FM comes from the RDS programme identifier rather than the
+name field. The name field is eight characters and stations commonly scroll advertising or a
+slogan through it a word at a time, so what it holds at any moment is rarely the station's
+name; the identifier is fixed, and in North America it spells out the call letters.
+
+AM is typed and shown in kilohertz, because nobody tuning 1140 thinks of it as 1.14 MHz.
+
+**AM needs a dongle wired for direct sampling.** The tuner stops around 24 MHz and the
+broadcast band is far below it, so AM is reached by sampling the ADC directly. An RTL-SDR
+Blog V3 does this; a plain DVB-T stick does not, and on one that does not the band will
+sound empty rather than fail outright. A whip cut for FM is a poor AM antenna and will hear
+only the strongest locals.
+
 It is off until it is told where the dongle is:
 
 | Variable | Purpose |
@@ -398,6 +438,8 @@ It is off until it is told where the dongle is:
 | `RADIO_PPM` | The dongle's frequency error in parts per million, for one that is off |
 | `RADIO_SCAN_SECONDS` | How long a scan waits on each frequency, 6 by default. Longer finds weaker stations; shorter gets through the empty ones faster |
 | `NRSC5` | Path to nrsc5, when it is not on `PATH` |
+| `RTLANALOG` | Path to rtlanalog. Until it is set, analog AM and FM are off and only HD Radio is offered |
+| `REDSEA` | Path to redsea. Without it analog FM still plays, and says nothing about itself |
 
 ```bash
 RADIO_DEVICE=0 PHP_CLI_SERVER_WORKERS=4 php -S 0.0.0.0:8080 -t public public/index.php
