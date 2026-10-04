@@ -336,5 +336,9 @@ class StationStateTest extends TestCase
         $this->assertSame('am', $station['mode']);
         $this->assertNull($station['station']);
         $this->assertNull($station['title']);
+
+        // And counted as found from the start: there is no carrier to lock and no name to
+        // wait for, so waiting would mean saying "tuning" for the whole of the listen.
+        $this->assertTrue($station['synchronized']);
     }
 }

@@ -19,6 +19,7 @@ const LANGUAGE_NAMES = {
 const QUALITY_STORAGE_KEY = 'hdhomerun.quality';
 const RADIO_STATIONS_STORAGE_KEY = 'skywave.radioStations';
 const RADIO_FREQUENCY_STORAGE_KEY = 'skywave.radioFrequency';
+const RADIO_MODE_STORAGE_KEY = 'skywave.radioMode';
 const RECORDED_GROUP_KEY = 'skywave.recordedGroup';
 const RECORDED_SORT_KEY = 'skywave.recordedSort';
 /** The radio's place in the device list. Not an address, so it can never be mistaken for one. */
@@ -53,6 +54,31 @@ const LOW_SPACE_BYTES = 20e9;
 // Helpers
 
 /** Build a DOM element; strings become text nodes, so broadcast data is never parsed as HTML. */
+/**
+ * How a station is written: "93.1 FM · HD1", "93.1 FM", "1140 AM".
+ *
+ * AM is said in kilohertz because that is how anybody tuning it thinks of it, while every
+ * frequency travelling between here and the server is in MHz. 1140 kHz is 1.14.
+ */
+function dialLabel(station) {
+  const mode = station.mode ?? 'hd';
+
+  if (mode === 'am') return `${Math.round(Number(station.frequency) * 1000)} AM`;
+  if (mode === 'fm') return `${Number(station.frequency).toFixed(1)} FM`;
+
+  return `${Number(station.frequency).toFixed(1)} FM · HD${(station.program ?? 0) + 1}`;
+}
+
+/** What the band's frequencies look like: AM counts in kilohertz, FM in megahertz. */
+const BANDS = {
+  fm: { unit: 'MHz', step: 0.1, decimals: 1, scale: 1, placeholder: '90.5' },
+  am: { unit: 'kHz', step: 10, decimals: 0, scale: 1000, placeholder: '1140' },
+};
+
+function bandOf(mode) {
+  return mode === 'am' ? 'am' : 'fm';
+}
+
 function h(tag, attributes = {}, ...children) {
   const element = document.createElement(tag);
 
@@ -1660,10 +1686,10 @@ function createPlayer(panel) {
    * Listen to an HD Radio program. There is no tuner to find and no guide to consult: the
    * station says who it is and what it is playing, and that arrives with each poll.
    */
-  async function playRadio({ frequency, program, onStation }) {
+  async function playRadio({ frequency, program, mode = 'hd', onStation }) {
     await stop();
 
-    radio = { frequency, program, onStation };
+    radio = { frequency, program, mode, onStation };
     // Live, like a channel: the playlist rolls and can be rewound. Nothing here records
     // it, there is one size of it, and there is no picture to fill a screen with.
     liveButton.hidden = false;
@@ -1677,7 +1703,7 @@ function createPlayer(panel) {
     // unasked. Nobody presses Listen to hear nothing, and the press is the asking.
     video.muted = false;
     panel.hidden = false;
-    showStation({ frequency, program });
+    showStation({ frequency, program, mode });
     spinner.hidden = false;
     setStatus('Tuning…');
     showControls();
@@ -1686,7 +1712,7 @@ function createPlayer(panel) {
     try {
       session = await api('/api/radio/stream', {
         method: 'POST',
-        body: JSON.stringify({ frequency, program, viewer: VIEWER_ID }),
+        body: JSON.stringify({ frequency, program, mode, viewer: VIEWER_ID }),
       });
     } catch (error) {
       spinner.hidden = true;
@@ -1700,7 +1726,7 @@ function createPlayer(panel) {
 
   /** Put what the station says about itself where a channel's name and programme would go. */
   function showStation(station) {
-    const dial = `${Number(station.frequency).toFixed(1)} FM · HD${station.program + 1}`;
+    const dial = dialLabel(station);
 
     channelLabel.replaceChildren(h('span', {}, station.station ? `${station.station} · ${dial}` : dial));
     programLabel.replaceChildren(...[
@@ -3943,22 +3969,73 @@ function createRadioView(radio, player) {
 
   const diagnostics = h('details', { class: 'radio-diag' });
 
+  // What this server can actually tune. A server with nrsc5 and no rtlanalog offers only
+  // HD Radio, and never shows an AM field somebody could type into for nothing.
+  const offered = Array.isArray(radio.modes) && radio.modes.length > 0 ? radio.modes : ['hd'];
+  const MODE_NAMES = { hd: 'HD FM', fm: 'FM', am: 'AM' };
+
+  let mode = offered.includes(radio.session?.radio?.mode) ? radio.session.radio.mode
+    : (offered.includes(loadSetting(RADIO_MODE_STORAGE_KEY)) ? loadSetting(RADIO_MODE_STORAGE_KEY) : offered[0]);
+
+  const modeButtons = offered.map((one) => h('button', {
+    type: 'button',
+    'aria-pressed': String(one === mode),
+    onclick: () => {
+      if (one === mode) return;
+      mode = one;
+      saveSetting(RADIO_MODE_STORAGE_KEY, mode);
+      applyBand();
+      renderModes();
+    },
+  }, MODE_NAMES[one] ?? one));
+
+  // Only worth showing when there is a choice: one mode is not a decision.
+  const modePicker = offered.length > 1
+    ? h('div', { class: 'segmented radio-modes', role: 'group', 'aria-label': 'Band' }, ...modeButtons)
+    : null;
+
   const frequencyInput = h('input', {
     type: 'number',
     inputmode: 'decimal',
-    min: String(radio.band.from),
-    max: String(radio.band.to),
-    step: '0.1',
     required: true,
-    placeholder: '90.5',
     class: 'radio-freq',
-    'aria-label': 'Frequency in MHz',
   });
+  const bandNote = h('span', { class: 'muted' });
+
+  function renderModes() {
+    modeButtons.forEach((button, index) => button.setAttribute('aria-pressed', String(offered[index] === mode)));
+  }
+
+  /**
+   * Put the frequency field into the band's own units.
+   *
+   * The field is what somebody types into, so it counts the way they do: kilohertz on AM,
+   * megahertz on FM. Everything below here works in MHz, and band.scale is the conversion.
+   */
+  function applyBand() {
+    const band = BANDS[bandOf(mode)];
+    const limits = radio.bands?.[bandOf(mode)] ?? { from: radio.band.from, to: radio.band.to };
+
+    frequencyInput.min = String(limits.from);
+    frequencyInput.max = String(limits.to);
+    frequencyInput.step = String(band.step);
+    frequencyInput.placeholder = band.placeholder;
+    frequencyInput.setAttribute('aria-label', `Frequency in ${band.unit}`);
+    bandNote.textContent = `${band.unit} · ${Number(limits.from).toFixed(band.decimals)}–${Number(limits.to).toFixed(band.decimals)}`;
+
+    const current = Number(frequencyInput.value);
+
+    // A frequency from the other band is not a frequency here, and leaving it would have
+    // the field refuse to submit with nothing saying why.
+    if (!Number.isFinite(current) || current < limits.from || current > limits.to) {
+      frequencyInput.value = '';
+    }
+  }
   const downButton = h('button', {
-    type: 'button', class: 'radio-step', 'aria-label': 'Down 0.2 MHz', onclick: () => nudge(-0.2),
+    type: 'button', class: 'radio-step', 'aria-label': 'Down one step', onclick: () => nudge(-2),
   }, '−');
   const upButton = h('button', {
-    type: 'button', class: 'radio-step', 'aria-label': 'Up 0.2 MHz', onclick: () => nudge(0.2),
+    type: 'button', class: 'radio-step', 'aria-label': 'Up one step', onclick: () => nudge(2),
   }, '+');
   const listenButton = h('button', { type: 'submit', class: 'radio-listen' }, 'Listen');
 
@@ -3989,11 +4066,12 @@ function createRadioView(radio, player) {
       h('div', { class: 'radio-side' },
         h('div', { class: 'card radio-panel' },
           h('div', { class: 'radio-panel-head' }, h('h4', {}, 'Tune')),
+          modePicker,
           h('form', { class: 'radio-tune', onsubmit: onTune },
             downButton,
             h('div', { class: 'radio-freq-field' },
               frequencyInput,
-              h('span', { class: 'muted' }, `MHz · ${radio.band.from.toFixed(1)}–${radio.band.to.toFixed(1)}`),
+              bandNote,
             ),
             upButton,
             listenButton,
@@ -4016,8 +4094,21 @@ function createRadioView(radio, player) {
   let playing = radio.session?.radio ?? null;
   const remembered = Number(loadSetting(RADIO_FREQUENCY_STORAGE_KEY));
 
-  if (playing) frequencyInput.value = Number(playing.frequency).toFixed(1);
-  else if (remembered >= radio.band.from && remembered <= radio.band.to) frequencyInput.value = remembered.toFixed(1);
+  applyBand();
+
+  if (playing) {
+    frequencyInput.value = inBandUnits(Number(playing.frequency));
+  } else if (Number.isFinite(remembered)) {
+    frequencyInput.value = inBandUnits(remembered);
+    applyBand();
+  }
+
+  /** A frequency in MHz, written the way this band's field counts. */
+  function inBandUnits(megahertz) {
+    const band = BANDS[bandOf(mode)];
+
+    return (megahertz * band.scale).toFixed(band.decimals);
+  }
 
   // The transport is ours but the media element is the player's, so it tells us what it did.
   player.onPlaybackChange(() => renderTransport());
@@ -4025,20 +4116,28 @@ function createRadioView(radio, player) {
   render();
   if (scan?.running) scheduleScanPoll();
 
-  function nudge(by) {
-    const from = Number(frequencyInput.value) || radio.band.from;
-    const next = Math.min(radio.band.to, Math.max(radio.band.from, Math.round((from + by) * 10) / 10));
+  function nudge(steps) {
+    const band = BANDS[bandOf(mode)];
+    const limits = radio.bands?.[bandOf(mode)] ?? { from: radio.band.from, to: radio.band.to };
+    const from = Number(frequencyInput.value) || limits.from;
+    const by = steps * band.step;
+    // Rounded onto the band's own grid, so stepping never lands between two stations.
+    const next = Math.min(limits.to, Math.max(limits.from, Math.round((from + by) / band.step) * band.step));
 
-    frequencyInput.value = next.toFixed(1);
+    frequencyInput.value = next.toFixed(band.decimals);
   }
 
   function onTune(event) {
     event.preventDefault();
 
-    const frequency = Math.round(Number(frequencyInput.value) * 10) / 10;
-    if (!Number.isFinite(frequency)) return;
+    const band = BANDS[bandOf(mode)];
+    const typed = Number(frequencyInput.value);
+    if (!Number.isFinite(typed)) return;
 
-    listen(frequency, 0);
+    // Back into MHz, which is what everything from here on speaks.
+    const frequency = Math.round((typed / band.scale) * 1000) / 1000;
+
+    listen(frequency, 0, mode);
   }
 
   async function stopListening() {
@@ -4048,8 +4147,16 @@ function createRadioView(radio, player) {
     render();
   }
 
-  function listen(frequency, program) {
-    const mine = { frequency, program, since: Date.now() };
+  function listen(frequency, program, listenMode = mode) {
+    const mine = { frequency, program, mode: listenMode, since: Date.now() };
+
+    // Tuning a saved station can change the band under the picker, so it follows along.
+    if (listenMode !== mode && offered.includes(listenMode)) {
+      mode = listenMode;
+      saveSetting(RADIO_MODE_STORAGE_KEY, mode);
+      applyBand();
+      renderModes();
+    }
 
     listening = mine;
     station = null;
@@ -4057,10 +4164,10 @@ function createRadioView(radio, player) {
     // which takes about a minute, and used to be a minute of looking at a grey square.
     // The subchannel's own, where it has one: HD2 is a different station to HD1 and
     // showing HD1's picture over it is worse than showing none.
-    savedLogo = logoKeptFor(frequency, program);
+    savedLogo = listenMode === 'hd' ? logoKeptFor(frequency, program) : null;
     // Whatever was playing when the page opened is not what is playing now.
     playing = null;
-    frequencyInput.value = frequency.toFixed(1);
+    frequencyInput.value = inBandUnits(frequency);
     saveSetting(RADIO_FREQUENCY_STORAGE_KEY, String(frequency));
     render();
 
@@ -4071,6 +4178,7 @@ function createRadioView(radio, player) {
     player.playRadio({
       frequency,
       program,
+      mode: listenMode,
       onStation: (next) => {
         if (listening !== mine) return;
 
@@ -4137,10 +4245,13 @@ function createRadioView(radio, player) {
 
   function stationRow(saved, program, scanning, labelled) {
     const number = program?.number ?? 0;
+    const savedMode = saved.mode ?? 'hd';
+    const band = BANDS[bandOf(savedMode)];
+    const dial = (saved.frequency * band.scale).toFixed(band.decimals);
     const chosen = listening?.frequency === saved.frequency && listening?.program === number;
     const logo = program?.logo ?? (number === 0 ? saved.logo : null) ?? null;
     const name = labelled ? programName(saved, program) : (saved.name ?? '');
-    const what = `${saved.frequency.toFixed(1)}${labelled ? ` HD${number + 1}` : ''}${name ? ` ${name}` : ''}`;
+    const what = `${dial} ${band.unit}${labelled ? ` HD${number + 1}` : ''}${name ? ` ${name}` : ''}`;
 
     return h('div', { class: 'radio-station', 'aria-current': String(chosen) },
       h('button', {
@@ -4148,13 +4259,17 @@ function createRadioView(radio, player) {
         class: 'radio-station-pick',
         disabled: scanning || editing,
         title: `Listen to ${what}`,
-        onclick: () => listen(saved.frequency, number),
+        onclick: () => listen(saved.frequency, number, savedMode),
         // A station found before it gave its name is still a station; it is its frequency.
       },
         h('span', { class: `radio-station-logo${logo ? '' : ' is-empty'}` },
           logo && h('img', { src: logo, alt: '', loading: 'lazy' })),
-        h('b', {}, saved.frequency.toFixed(1)),
+        h('b', {}, dial),
         h('span', { class: 'radio-station-name' },
+          // Which of the three this is. A subchannel already says HD by its number, so
+          // only the first row of an HD station carries the band as well.
+          (!labelled || number === 0) && h('span', { class: `radio-band is-${bandOf(savedMode)}` },
+            savedMode === 'am' ? 'AM' : 'FM'),
           labelled && h('span', { class: 'radio-station-sub' }, `HD${number + 1}`),
           name),
         chosen && h('span', { class: 'radio-bars', 'aria-hidden': 'true' },
@@ -4164,8 +4279,8 @@ function createRadioView(radio, player) {
       editing && number === 0 && h('button', {
         type: 'button',
         class: 'radio-remove',
-        title: `Forget ${saved.name ?? saved.frequency.toFixed(1)}`,
-        'aria-label': `Forget ${saved.name ?? saved.frequency.toFixed(1)}`,
+        title: `Forget ${saved.name ?? dial}`,
+        'aria-label': `Forget ${saved.name ?? dial}`,
         onclick: () => forget(saved.frequency, saved.name),
       }, '\u00d7'),
     );

@@ -1535,6 +1535,34 @@ button.record.is-recording,
   font-weight: 700;
   letter-spacing: .04em;
 }
+
+/* Which of the three a saved station is. Quieter than the HD pill beside it: the subchannel
+   number is what somebody picks between, and the band is only context for it. */
+.radio-band {
+  flex: none;
+  margin-right: var(--space-3);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.radio-band.is-am { border-style: dashed; }
+
+/* The band picker above the dial: HD FM, FM, AM, and only when there is a choice.
+   Scoped through .radio-panel so it beats .segmented, which sets display at the same
+   specificity further down the file and would otherwise keep it inline-flex -- leaving the
+   three buttons sized to their words, which is not what the width here is for. */
+.radio-panel .radio-modes {
+  display: flex;
+  margin: var(--space-5) var(--space-6) 0;
+}
+
+.radio-panel .radio-modes button { flex: 1; white-space: nowrap; }
+
 .radio-station[aria-current="true"] .radio-station-sub { background: color-mix(in srgb, var(--accent) 26%, transparent); color: var(--accent); }
 .radio-station[aria-current="true"] .radio-station-name { color: var(--text); }
 .radio-station-pick:disabled { opacity: 1; cursor: default; }
