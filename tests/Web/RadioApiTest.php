@@ -129,6 +129,25 @@ class RadioApiTest extends TestCase
         $this->assertSame(404, $this->api(null)->handle(Request::create('/api/radio/scan', 'GET'))->getStatusCode());
     }
 
+    public function testAnAmStationCanBeForgottenAsWellAsAnFmOne(): void
+    {
+        // The route used to take two or three digits and one decimal, which is an FM
+        // frequency and nothing else: 1.06 MHz did not match it at all, so an AM station
+        // could be saved and never removed.
+        $stations = new StationStore($this->directory . '/guide.sqlite');
+        $stations->save(1.06, null, [], null, 'am');
+        $stations->save(93.1, 'WFEZ', [], null, 'fm');
+
+        $api = new Api(new Discovery(), [], new LiveStreams($this->directory), null, null, null, null, null, null, null, null, new Receiver(PHP_BINARY, null, 0), $stations, new ScanJobs($this->directory . '/scan', '/nowhere/radio-scan.php'));
+
+        $response = $api->handle(Request::create('/api/radio/stations/1.06', 'DELETE'));
+        $body     = json_decode((string) $response->getContent(), true);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertTrue($body['removed']);
+        $this->assertSame([93.1], array_column($body['stations'], 'frequency'), 'and only that one');
+    }
+
     public function testTheRainSheetIsOfferedBesideTheTrafficTiles(): void
     {
         // What the listener's own process has written down, and what nrsc5 has put on disk

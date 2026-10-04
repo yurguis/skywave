@@ -84,4 +84,68 @@ class StationStoreTest extends TestCase
         $this->assertFalse($this->store->remove(90.5));
         $this->assertSame([], $this->store->all());
     }
+
+    public function testAnAmStationKeepsItsKilohertz(): void
+    {
+        $store = $this->store;
+        $store->save(1.14, 'WQBA', [], null, 'am');
+
+        // Rounded to a tenth of a MHz, as FM is, 1140 kHz would come back as 1100.
+        $this->assertSame(1.14, $store->find(1.14)['frequency']);
+        $this->assertSame('am', $store->find(1.14)['mode']);
+    }
+
+    public function testTheTwoBandsShareTheColumnWithoutColliding(): void
+    {
+        $store = $this->store;
+        $store->save(1.14, 'WQBA', [], null, 'am');
+        $store->save(93.1, 'WFEZ', [], null, 'fm');
+
+        $all = $store->all();
+
+        $this->assertCount(2, $all);
+        $this->assertSame([1.14, 93.1], array_column($all, 'frequency'), 'up the dial, AM first');
+        $this->assertSame(['am', 'fm'], array_column($all, 'mode'));
+    }
+
+    public function testKnowingAStationHasHdRadioIsNotForgotten(): void
+    {
+        $store = $this->store;
+        $store->save(93.1, 'WFEZ', [['number' => 0, 'name' => 'HD1', 'type' => null]]);
+
+        // Listening to the analog underneath does not mean the HD went away.
+        $store->save(93.1, 'WFEZ', [], null, 'fm');
+
+        $this->assertSame('hd', $store->find(93.1)['mode']);
+    }
+
+    public function testAnAnalogStationStaysAnalogUntilHdIsFound(): void
+    {
+        $store = $this->store;
+        $store->save(104.3, null, [], null, 'fm');
+
+        $this->assertSame('fm', $store->find(104.3)['mode']);
+
+        $store->save(104.3, 'WQAM', [], null, 'hd');
+
+        $this->assertSame('hd', $store->find(104.3)['mode']);
+    }
+
+    public function testADatabaseMadeBeforeAnalogGainsTheColumn(): void
+    {
+        // What the table looked like when nrsc5 was the only way to hear anything.
+        $path = $this->directory . '/legacy.sqlite';
+        $db   = new \PDO('sqlite:' . $path);
+        $db->exec(
+            'CREATE TABLE radio_stations (
+                frequency INTEGER PRIMARY KEY, name TEXT,
+                programs TEXT NOT NULL DEFAULT \'[]\', signal REAL, heard_at INTEGER NOT NULL)'
+        );
+        $db->exec("INSERT INTO radio_stations VALUES (93100, 'WFEZ', '[]', NULL, 1)");
+        $db = null;
+
+        $store = new StationStore($path);
+
+        $this->assertSame('hd', $store->find(93.1)['mode'], 'everything already there was found by nrsc5');
+    }
 }

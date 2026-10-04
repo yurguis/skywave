@@ -60,7 +60,9 @@ use Symfony\Component\HttpFoundation\Request;
  *   DELETE /api/streams/{id}?viewer=<id>                 stop watching (POST .../leave for sendBeacon)
  *
  *   GET  /api/radio                                      the HD Radio dongle and what it is playing
- *   POST /api/radio/stream  {"frequency": 90.5, "program": 0, "viewer": "<id>"}   listen to a station
+ *   POST /api/radio/stream  {"frequency": 90.5, "program": 0, "mode": "hd", "viewer": "<id>"}
+ *                           listen to a station: mode hd, fm or am, and on AM the
+ *                           frequency is still MHz, so 1140 kHz is 1.14
  *   GET    /api/radio/scan                               how a scan is getting on, and the stations known
  *   POST   /api/radio/scan     {"from": 87.9, "to": 107.9}   look for stations in the background
  *   DELETE /api/radio/scan                               ask a running scan to stop
@@ -240,10 +242,12 @@ class Api
             return $this->routeRadioScan($method, $request);
         }
 
-        if (preg_match('#^/api/radio/stations/(\d{2,3}(?:\.\d)?)$#', $path, $match)) {
+        // 93.1 and 104.3 on FM, 1.06 on AM: one to three digits, and up to three decimals
+        // because AM is counted to the kilohertz.
+        if (preg_match('#^/api/radio/stations/(\d{1,3}(?:\.\d{1,3})?)$#', $path, $match)) {
             self::requireMethod($method, 'DELETE');
 
-            return $this->forgetStation(Receiver::validateFrequency((float) $match[1]));
+            return $this->forgetStation(Receiver::validateAnyFrequency((float) $match[1]));
         }
 
         if ($path === '/api/guide') {
@@ -883,9 +887,21 @@ class Api
         $device  = null;
         $error   = null;
 
+        // HD Radio and analog are decoded by different programs, and a server may have
+        // either, both or neither. Only having neither is a reason to say nothing works.
+        $modes = [];
+
+        if ($this->radio->binary() !== null) {
+            $modes[] = Receiver::MODE_HD;
+        }
+
+        if ($this->radio->supportsAnalog()) {
+            array_push($modes, Receiver::MODE_FM, Receiver::MODE_AM);
+        }
+
         if ($this->streams === null) {
             $error = 'Live playback is not enabled';
-        } elseif ($this->radio->binary() === null) {
+        } elseif ($modes === []) {
             $error = $this->radio->whyMissing();
         } elseif ($session === null && $address !== null) {
             try {
@@ -900,7 +916,18 @@ class Api
             'device'  => $device,
             'error'   => $error,
             'session' => $session,
-            'band'    => ['from' => Receiver::MIN_FREQUENCY, 'to' => Receiver::MAX_FREQUENCY],
+            // What this server can tune. The page offers only these, so a server without
+            // rtlanalog never shows an AM field somebody could type into for nothing.
+            'modes' => $modes,
+            'band'  => ['from' => Receiver::MIN_FREQUENCY, 'to' => Receiver::MAX_FREQUENCY],
+            'bands' => [
+                'fm' => ['from' => Receiver::MIN_FREQUENCY, 'to' => Receiver::MAX_FREQUENCY],
+                // In kilohertz, which is how AM is spoken of and typed.
+                'am' => [
+                    'from' => (int) round(Receiver::MIN_AM_FREQUENCY * 1000),
+                    'to'   => (int) round(Receiver::MAX_AM_FREQUENCY * 1000),
+                ],
+            ],
         ] + $this->describeStations() + $this->radio->describe();
     }
 
@@ -1047,7 +1074,13 @@ class Api
 
         if ($this->stations !== null && is_array($station) && ($station['synchronized'] ?? false)) {
             try {
-                $this->stations->save((float) $station['frequency'], $station['station'] ?? null, $station['programs'] ?? [], $station['mer'] ?? null);
+                $this->stations->save(
+                    (float) $station['frequency'],
+                    $station['station'] ?? null,
+                    $station['programs'] ?? [],
+                    $station['mer'] ?? null,
+                    is_string($station['mode'] ?? null) ? $station['mode'] : Receiver::MODE_HD
+                );
             } catch (\Throwable $e) {
                 // A database that is busy or gone must not stop the radio playing.
             }
@@ -1059,7 +1092,7 @@ class Api
     private function configuredRadio(): Receiver
     {
         if ($this->radio === null || !$this->radio->isConfigured()) {
-            throw new ApiException('HD Radio is not enabled: set RADIO_RTL_TCP or RADIO_DEVICE', 404);
+            throw new ApiException('Radio is not enabled: set RADIO_RTL_TCP or RADIO_DEVICE', 404);
         }
 
         return $this->radio;
@@ -1072,20 +1105,25 @@ class Api
     private function startRadio(array $body): array
     {
         $radio = $this->configuredRadio();
+        $mode  = Receiver::validateMode($body['mode'] ?? Receiver::MODE_HD);
 
-        if ($radio->binary() === null) {
+        if ($mode === Receiver::MODE_HD && $radio->binary() === null) {
             throw new ApiException($radio->whyMissing(), 503);
         }
 
-        $frequency = Receiver::validateFrequency($body['frequency'] ?? null);
-        $program   = Receiver::validateProgram($body['program'] ?? 0);
+        if ($mode !== Receiver::MODE_HD && !$radio->supportsAnalog()) {
+            throw new ApiException($radio->whyAnalogMissing(), 503);
+        }
+
+        $frequency = Receiver::validateFrequency($body['frequency'] ?? null, $mode);
+        $program   = $mode === Receiver::MODE_HD ? Receiver::validateProgram($body['program'] ?? 0) : 0;
         $viewer    = self::validateViewer($body['viewer'] ?? null);
 
         if ($this->scans !== null && $this->scans->isRunning()) {
             throw new ApiException('A scan is using the dongle; cancel it or wait for it to finish', 409);
         }
 
-        return $this->rememberStation($this->liveStreams()->joinRadio($radio, $frequency, $program, $viewer));
+        return $this->rememberStation($this->liveStreams()->joinRadio($radio, $frequency, $program, $viewer, $mode));
     }
 
     private function liveStreams(): LiveStreams

@@ -39,11 +39,19 @@ services:
       RADIO_PPM: ${RADIO_PPM:-}
       # Seconds a scan waits on each frequency before calling it empty; 6 when unset.
       RADIO_SCAN_SECONDS: ${RADIO_SCAN_SECONDS:-}
+      # Analog AM and FM, which nrsc5 does not do: rtlanalog demodulates and redsea reads
+      # RDS out of the FM multiplex. Built by docker/analog/build-analog.sh. Left unset,
+      # analog stays off and only HD Radio is offered.
+      RTLANALOG: /opt/analog/bin/rtlanalog
+      REDSEA: /opt/analog/bin/redsea
     volumes:
       # Where the build wrote nrsc5 and its libraries. It must be readable by the
       # container's user, which a directory docker created for itself is not; see
       # docker/nrsc5/README.md.
       - "${NRSC5_DIR:-./data/nrsc5}:/opt/nrsc5:ro"
+      # Where the analog build wrote rtlanalog, redsea and their libraries, on the same
+      # terms. Absent, the two variables above point at nothing and analog is simply off.
+      - "${ANALOG_DIR:-./data/analog}:/opt/analog:ro"
 
   radio-simulator:
     profiles: [radio-simulator]
