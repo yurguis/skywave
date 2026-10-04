@@ -34,16 +34,6 @@ RUN apk add --no-cache \
         autoconf automake libtool \
         libsndfile-dev nlohmann-json
 
-# rtlanalog first: it is ours, it is one file, and it has nothing to download. Static,
-# because it needs only libc and libm and a binary that needs no libraries cannot be
-# given the wrong ones.
-WORKDIR /src/rtlanalog
-COPY rtlanalog.c .
-RUN mkdir -p /opt/analog/bin \
-    && gcc -O2 -Wall -Wextra -Werror -static -o /opt/analog/bin/rtlanalog rtlanalog.c -lm \
-    && strip /opt/analog/bin/rtlanalog \
-    && /opt/analog/bin/rtlanalog -h 2>&1 | head -1
-
 # liquid-dsp, which redsea needs. Its meson file asks for the library without requiring
 # it, which reads as optional and is not: the sources include liquid/liquid.h whatever the
 # build decided, so a redsea built without it fails at the first compile. Built here, from
@@ -76,13 +66,24 @@ RUN git init -q . \
 RUN meson setup build --buildtype=release \
         -Dcpp_link_args='-Wl,-rpath,/opt/analog/lib' \
     && ninja -C build \
-    && mkdir -p /opt/analog/lib \
+    && mkdir -p /opt/analog/bin /opt/analog/lib \
     && cp build/redsea /opt/analog/bin/ \
     && strip /opt/analog/bin/redsea \
     && ldd build/redsea \
         | awk '$3 ~ /^\/usr\/lib\// { print $3 }' \
         | xargs -r -I{} cp -L {} /opt/analog/lib/ \
     && ls -la /opt/analog/bin /opt/analog/lib
+
+# rtlanalog last, although it is ours and the quickest: its source is the one that
+# changes, and anything built after it would be rebuilt with it every time. Static,
+# because it needs only libc and libm and a binary that needs no libraries cannot be
+# given the wrong ones.
+WORKDIR /src/rtlanalog
+COPY rtlanalog.c .
+RUN mkdir -p /opt/analog/bin \
+    && gcc -O2 -Wall -Wextra -Werror -static -o /opt/analog/bin/rtlanalog rtlanalog.c -lm \
+    && strip /opt/analog/bin/rtlanalog \
+    && /opt/analog/bin/rtlanalog -h 2>&1 | head -1
 
 # Fail here rather than exporting something that cannot read a station. redsea's own test
 # signals are no use for this: they are kept in git-lfs, and a shallow fetch brings down

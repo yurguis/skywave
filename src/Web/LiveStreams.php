@@ -187,15 +187,25 @@ class LiveStreams
      *
      * @return array<string, mixed>
      */
-    public function joinRadio(Receiver $receiver, float $frequency, int $program, string $viewer): array
+    public function joinRadio(Receiver $receiver, float $frequency, int $program, string $viewer, string $mode = Receiver::MODE_HD): array
     {
-        return $this->locked(function () use ($receiver, $frequency, $program, $viewer): array {
+        return $this->locked(function () use ($receiver, $frequency, $program, $viewer, $mode): array {
             $this->reap();
 
-            $frequency = Receiver::validateFrequency($frequency);
-            $program   = Receiver::validateProgram($program);
-            $id        = substr(hash('sha256', sprintf('radio|%.1f|%d', $frequency, $program)), 0, 16);
-            $session   = $this->load($id);
+            $mode      = Receiver::validateMode($mode);
+            $frequency = Receiver::validateFrequency($frequency, $mode);
+
+            // Only HD Radio carries programs; analog is the one station on the frequency.
+            $program = $mode === Receiver::MODE_HD ? Receiver::validateProgram($program) : 0;
+
+            if ($mode !== Receiver::MODE_HD && !$receiver->supportsAnalog()) {
+                throw new ApiException($receiver->whyAnalogMissing(), 503);
+            }
+
+            // The mode is part of what makes a session its own: 93.1 heard as HD Radio and
+            // 93.1 heard as analog are two different things to listen to.
+            $id      = substr(hash('sha256', sprintf('radio|%s|%.3f|%d', $mode, $frequency, $program)), 0, 16);
+            $session = $this->load($id);
 
             if ($session !== null && !$this->isRunning($session['pid'])) {
                 $this->terminate($session, false);
@@ -221,28 +231,40 @@ class LiveStreams
 
                 $directory = "$this->directory/$id";
 
-                // tools/radio.php rather than ffmpeg alone: it runs nrsc5 into ffmpeg and
-                // keeps the station's details. Its command line names ffmpeg, which is what
-                // isRunning() looks for in a pid before believing it is still ours.
-                $session = $this->spawn($id, array_merge([
+                $options = [
                     $this->php, dirname(__DIR__, 2) . '/tools/radio.php',
                     "--directory=$directory",
                     "--ffmpeg=$this->ffmpeg",
                     "--rewind=$this->rewindSeconds",
                     "--program=$program",
-                    '--',
-                ], $receiver->arguments($frequency, $program, $directory)), [
-                    'id'              => $id,
-                    'host'            => 'radio',
-                    'tuner'           => null,
-                    'channel'         => sprintf('%.1f FM HD%d', $frequency, $program + 1),
-                    'physicalChannel' => null,
-                    'program'         => $program,
-                    'targetBefore'    => null,
-                    'renditions'      => 1,
-                    'audio'           => [],
-                    'radio'           => ['frequency' => $frequency, 'program' => $program],
-                ]);
+                    "--mode=$mode",
+                ];
+
+                // redsea reads the station's name and the song off the FM multiplex. It is
+                // not needed to play one, so a server without it simply says less.
+                if ($mode === Receiver::MODE_FM && $receiver->redseaBinary() !== null) {
+                    $options[] = '--redsea=' . $receiver->redseaBinary();
+                }
+
+                $options[] = '--';
+
+                // tools/radio.php rather than ffmpeg alone: it runs the decoder into ffmpeg
+                // and keeps the station's details. Its command line names ffmpeg, which is
+                // what isRunning() looks for in a pid before believing it is still ours.
+                $session = $this->spawn($id, array_merge($options, $mode === Receiver::MODE_HD
+                    ? $receiver->arguments($frequency, $program, $directory)
+                    : array_merge($receiver->analogArguments($mode, $frequency), $mode === Receiver::MODE_FM ? ['-S'] : [])), [
+                        'id'              => $id,
+                        'host'            => 'radio',
+                        'tuner'           => null,
+                        'channel'         => self::radioChannelName($mode, $frequency, $program),
+                        'physicalChannel' => null,
+                        'program'         => $program,
+                        'targetBefore'    => null,
+                        'renditions'      => 1,
+                        'audio'           => [],
+                        'radio'           => ['frequency' => $frequency, 'program' => $program, 'mode' => $mode],
+                    ]);
             }
 
             $session['viewers'][$viewer] = time();
@@ -250,6 +272,21 @@ class LiveStreams
 
             return $this->describe($session);
         });
+    }
+
+    /**
+     * What a station is called in a list of what is playing: "93.1 FM HD1", "93.1 FM",
+     * "1140 AM". AM is said in kilohertz because that is how anybody tuning it thinks.
+     */
+    public static function radioChannelName(string $mode, float $frequency, int $program): string
+    {
+        if ($mode === Receiver::MODE_AM) {
+            return sprintf('%d AM', (int) round($frequency * 1000));
+        }
+
+        return $mode === Receiver::MODE_FM
+            ? sprintf('%.1f FM', $frequency)
+            : sprintf('%.1f FM HD%d', $frequency, $program + 1);
     }
 
     /**

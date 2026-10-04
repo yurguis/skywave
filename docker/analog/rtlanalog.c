@@ -13,6 +13,11 @@
  *
  * Raw signed 16-bit mono goes to stdout, for ffmpeg to turn into sound.
  *
+ * With -S the same bytes go out a second time on file descriptor 3, which is how both of
+ * the multiplex's readers are fed without anything standing between the dongle and ffmpeg.
+ * That copy is written without blocking and dropped when nothing is draining it: RDS can
+ * lose a group and catch it next time round, where sound cannot lose a moment at all.
+ *
  * FM is sent out as the multiplex rather than as audio, which looks like the long way
  * round and is not: the multiplex is what both of its readers want. ffmpeg low-passes it
  * to 15 kHz and de-emphasises it for sound; redsea takes the same bytes and reads the RDS
@@ -28,10 +33,12 @@
 #include <math.h>
 #include <netdb.h>
 #include <stdint.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/socket.h>
 
 /* rtl_tcp takes five bytes: what to set, then the value, most significant byte first. */
@@ -179,7 +186,8 @@ static void usage(void)
         "  -M mpx|am        the FM multiplex at %d Hz, or AM audio at %d Hz\n"
         "  -f hertz         the station, in Hz: 93100000, or 1140000 for AM\n"
         "  -g dB            tuner gain; left out, the dongle chooses\n"
-        "  -p ppm           the dongle's frequency error\n\n"
+        "  -p ppm           the dongle's frequency error\n"
+        "  -S               send a second copy out file descriptor 3, for redsea\n\n"
         "Signed 16-bit mono goes to stdout.\n",
         FM_OUTPUT_RATE, AM_OUTPUT_RATE);
 }
@@ -189,15 +197,16 @@ int main(int argc, char **argv)
     const char *host = NULL;
     const char *mode = "mpx";
     double frequency = 0.0, gain = 0.0;
-    int havegain = 0, ppm = 0, option;
+    int havegain = 0, ppm = 0, option, duplicate = 0;
 
-    while ((option = getopt(argc, argv, "H:M:f:g:p:h")) != -1) {
+    while ((option = getopt(argc, argv, "H:M:f:g:p:Sh")) != -1) {
         switch (option) {
             case 'H': host = optarg; break;
             case 'M': mode = optarg; break;
             case 'f': frequency = atof(optarg); break;
             case 'g': gain = atof(optarg); havegain = 1; break;
             case 'p': ppm = atoi(optarg); break;
+            case 'S': duplicate = 1; break;
             default: usage(); return option == 'h' ? 0 : 64;
         }
     }
@@ -276,6 +285,22 @@ int main(int argc, char **argv)
         decimatorInit(&second, 63, 80000.0, FM_INPUT_RATE / FM_FIRST_STEP, FM_SECOND_STEP);
     }
 
+    /* Never allowed to hold the sound up: if redsea is slow or gone, the copy is dropped
+     * rather than waited on, and a write to a descriptor nobody holds would otherwise end
+     * this process with a signal instead of a reason. */
+    if (duplicate) {
+        const int flags = fcntl(3, F_GETFL);
+
+        if (flags < 0) {
+            fprintf(stderr, "rtlanalog: -S was given but file descriptor 3 is not open\n");
+
+            return 64;
+        }
+
+        fcntl(3, F_SETFL, flags | O_NONBLOCK);
+        signal(SIGPIPE, SIG_IGN);
+    }
+
     uint8_t raw[65536];
     int16_t out[8192];
     size_t pending = 0;
@@ -341,11 +366,16 @@ int main(int argc, char **argv)
 
             if (ready == sizeof out / sizeof out[0]) {
                 if (fwrite(out, sizeof out[0], ready, stdout) != ready) return 1;
+                if (duplicate) (void) write(3, out, ready * sizeof out[0]);
                 ready = 0;
             }
         }
 
-        if (ready > 0 && fwrite(out, sizeof out[0], ready, stdout) != ready) return 1;
+        if (ready > 0) {
+            if (fwrite(out, sizeof out[0], ready, stdout) != ready) return 1;
+            if (duplicate) (void) write(3, out, ready * sizeof out[0]);
+        }
+
         fflush(stdout);
 
         /* An odd trailing byte is half a pair; keep it for the next read. */

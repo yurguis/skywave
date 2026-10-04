@@ -57,6 +57,9 @@ final class StationState
     /** @var array<string, array{program: int, kind: string}> data port (hex) to what it carries */
     private array $ports = [];
 
+    /** hd, fm or am: which of the three this station is being heard as. */
+    private string $mode = Receiver::MODE_HD;
+
     /** The service whose components are being listed, as a program number. */
     private ?int $listing = null;
 
@@ -69,11 +72,120 @@ final class StationState
     private ?int $wantedCover = null;
 
     /**
-     * @param int $program the program being played, counting from zero (HD1 is 0)
+     * @param int    $program the program being played, counting from zero (HD1 is 0)
+     * @param string $mode    hd, fm or am: what is being listened to
      */
-    public function __construct(int $program = 0)
+    public function __construct(int $program = 0, string $mode = Receiver::MODE_HD)
     {
         $this->program = $program;
+        $this->mode    = Receiver::validateMode($mode);
+    }
+
+    /**
+     * Take one line of redsea's output: analog FM's answer to nrsc5's log.
+     *
+     * RDS says far less than HD Radio does -- no pictures, no subchannels, no bitrate --
+     * but it carries the two things worth having, which are who this is and what is on.
+     *
+     * The name is taken from the programme identifier rather than from the name field.
+     * The name field is eight characters and stations scroll advertising through it: 104.3
+     * was sending an attorney's telephone number a word at a time, and 93.1 its own slogan.
+     * The identifier is a number, it does not change, and in North America it spells out
+     * the call letters. Both were checked against stations whose letters are known.
+     *
+     * @return bool whether it changed anything worth telling a listener
+     */
+    public function applyRds(string $line): bool
+    {
+        $line = trim($line);
+
+        if ($line === '' || $line[0] !== '{') {
+            return false;
+        }
+
+        $group = json_decode($line, true);
+
+        if (!is_array($group)) {
+            return false;
+        }
+
+        $before = $this->toArray();
+
+        // Anything arriving at all means the station is there and readable, which is as
+        // close as analog comes to nrsc5's "Synchronized".
+        $this->synchronized = true;
+
+        if (isset($group['pi']) && is_string($group['pi'])) {
+            $this->station = self::callSign($group['pi']) ?? $this->station;
+        }
+
+        if (isset($group['prog_type']) && is_string($group['prog_type']) && $group['prog_type'] !== 'No PTY') {
+            $this->genre = $group['prog_type'];
+        }
+
+        // Radiotext is sixty-four characters and usually the song, sometimes the station
+        // advertising itself. It is shown as it came: there is no telling the two apart.
+        if (isset($group['radiotext']) && is_string($group['radiotext'])) {
+            $text = self::text($group['radiotext']);
+
+            if ($text !== null) {
+                $this->title = $text;
+            }
+        }
+
+        return $before !== $this->toArray();
+    }
+
+    /**
+     * The call letters a programme identifier stands for, or null when it stands for none.
+     *
+     * North America gives each station a number built from its call letters: K or W, then
+     * three letters in base 26. Verified against two stations off the air -- 0x7EF4 is
+     * WQAM on 104.3, 0x625D is WFEZ on 93.1.
+     */
+    public static function callSign(string $programIdentifier): ?string
+    {
+        if (!preg_match('/^0x([0-9A-Fa-f]{4})$/', $programIdentifier, $match)) {
+            return null;
+        }
+
+        $value = hexdec($match[1]);
+
+        // Below the first block and above the last are the identifiers that spell nothing:
+        // three-letter call signs, Canada and Mexico, and the ranges left unassigned.
+        if ($value < 0x1000 || $value > 0x994F) {
+            return null;
+        }
+
+        $first  = $value < 21672 ? 'K' : 'W';
+        $offset = $value - ($value < 21672 ? 4096 : 21672);
+
+        if ($offset < 0 || $offset >= 26 * 26 * 26) {
+            return null;
+        }
+
+        return $first
+            . chr(ord('A') + intdiv($offset, 676) % 26)
+            . chr(ord('A') + intdiv($offset, 26) % 26)
+            . chr(ord('A') + $offset % 26);
+    }
+
+    /**
+     * Something rtlanalog said on its standard error, which is only ever a complaint.
+     *
+     * @return bool whether it changed anything worth telling a listener
+     */
+    public function applyDecoderError(string $line): bool
+    {
+        $line = trim($line);
+
+        if ($line === '' || !str_starts_with($line, 'rtlanalog: ')) {
+            return false;
+        }
+
+        $this->error = substr($line, strlen('rtlanalog: '));
+
+        return true;
     }
 
     /**
@@ -124,6 +236,7 @@ final class StationState
             'alert'        => $this->alert,
             'bitrate'      => $this->bitrate,
             'codecMode'    => $this->codecMode,
+            'mode'         => $this->mode,
             'traffic'      => $this->trafficMaps(),
             'weather'      => $this->weather,
             'mer'          => $this->mer,

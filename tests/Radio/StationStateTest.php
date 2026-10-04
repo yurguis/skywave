@@ -274,4 +274,67 @@ class StationStateTest extends TestCase
 
         return $state;
     }
+
+    public function testAnalogFmIsReadFromWhatRedseaPrints(): void
+    {
+        // Lines as redsea really prints them, from 93.1 WFEZ through rtlanalog.
+        $state = new StationState(0, 'fm');
+
+        $state->applyRds('{"pi":"0x625D","group":"0A","tp":false,"prog_type":"Culture","ta":false,"is_music":true}');
+        $state->applyRds('{"pi":"0x625D","group":"2A","radiotext":"Ace Of Base - All That She Wants"}');
+
+        $station = $state->toArray();
+
+        // The name comes from the identifier, not the name field: see applyRds.
+        $this->assertSame('WFEZ', $station['station']);
+        $this->assertSame('Ace Of Base - All That She Wants', $station['title']);
+        $this->assertSame('Culture', $station['genre']);
+        $this->assertSame('fm', $station['mode']);
+        $this->assertTrue($station['synchronized']);
+    }
+
+    public function testCallSignsAreReadOutOfTheProgrammeIdentifier(): void
+    {
+        // Both checked off the air against stations whose letters are known.
+        $this->assertSame('WQAM', StationState::callSign('0x7EF4'));
+        $this->assertSame('WFEZ', StationState::callSign('0x625D'));
+
+        // Identifiers that stand for no call sign at all.
+        $this->assertNull(StationState::callSign('0x0001'));
+        $this->assertNull(StationState::callSign('0xFFFF'));
+        $this->assertNull(StationState::callSign('not a number'));
+    }
+
+    public function testNothingButJsonIsTakenForRds(): void
+    {
+        $state = new StationState(0, 'fm');
+
+        $this->assertFalse($state->applyRds(''));
+        $this->assertFalse($state->applyRds('redsea: something went wrong'));
+        $this->assertFalse($state->applyRds('{not json'));
+        $this->assertNull($state->toArray()['station']);
+    }
+
+    public function testTheDecoderIsBelievedOnlyWhenItNamesItself(): void
+    {
+        $state = new StationState(0, 'am');
+
+        // redsea and ffmpeg both write here too; only rtlanalog's own complaints are its.
+        $this->assertFalse($state->applyDecoderError('[hls] some ffmpeg grumble'));
+        $this->assertNull($state->getError());
+
+        $this->assertTrue($state->applyDecoderError('rtlanalog: cannot reach rtl_tcp at 127.0.0.1:1234'));
+        $this->assertSame('cannot reach rtl_tcp at 127.0.0.1:1234', $state->getError());
+    }
+
+    public function testAmCarriesNothingToSayAboutItself(): void
+    {
+        // No RDS on AM, so the station stays as unknown as it started. That is the band,
+        // not a fault, and the page has to be happy with a frequency and nothing else.
+        $station = (new StationState(0, 'am'))->toArray();
+
+        $this->assertSame('am', $station['mode']);
+        $this->assertNull($station['station']);
+        $this->assertNull($station['title']);
+    }
 }
