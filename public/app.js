@@ -4190,7 +4190,7 @@ function createRadioView(radio, player) {
         if (next?.station) remember(frequency, next.station);
         // The server keeps the logo the moment it can serve it, so this is when the saved
         // list gains one. Asked once: the station goes on sending it for as long as it is on.
-        if (next?.logo) keepLogo(frequency);
+        if (next?.logo) keepLogo(frequency, program);
         render();
       },
     });
@@ -4201,14 +4201,20 @@ function createRadioView(radio, player) {
    *
    * The station sends it over and over while it is on, and the list is only refetched for
    * this once: without the guard every poll for the rest of the listen would refetch it.
+   *
+   * Asked per subchannel, not per frequency. A subchannel has its own logo and HD1's is no
+   * substitute: 101.5 HD1 is WLYF and HD2 is the Voice of the Caribbean. Both guards here
+   * used to look at the frequency alone, so once HD1 had a logo -- which it usually does,
+   * being the one most listened to -- no other subchannel on it could ever refetch, and its
+   * logo sat on the server unasked for until the page was reloaded.
    */
-  function keepLogo(frequency) {
-    if (!serverKeeps || loggedLogos.has(frequency)) return;
+  function keepLogo(frequency, program) {
+    const asked = `${frequency}/${program}`;
 
-    const saved = stations.find((candidate) => candidate.frequency === frequency);
-    if (saved?.logo) return;
+    if (!serverKeeps || loggedLogos.has(asked)) return;
+    if (logoKeptFor(frequency, program)) return;
 
-    loggedLogos.add(frequency);
+    loggedLogos.add(asked);
     refreshStations();
   }
 
