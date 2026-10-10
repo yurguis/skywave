@@ -339,8 +339,8 @@ class GuideStore
             $find        = $this->db->prepare('SELECT id FROM channels WHERE device = ? AND physical = ? AND program = ?');
             $clearWindow = $this->db->prepare('DELETE FROM events WHERE channel_id = ? AND start >= ? AND start < ?');
             $insertEvent = $this->db->prepare(
-                'INSERT OR REPLACE INTO events (channel_id, event_id, start, duration, title, rating, description, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+                'INSERT OR REPLACE INTO events (channel_id, event_id, start, duration, title, rating, description, source, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, \'psip\', ?)'
             );
 
             foreach ($vctChannels as $vct) {
@@ -756,6 +756,7 @@ class GuideStore
                 title TEXT NOT NULL,
                 rating TEXT,
                 description TEXT,
+                source TEXT NOT NULL DEFAULT "psip",
                 updated_at INTEGER NOT NULL,
                 PRIMARY KEY (channel_id, event_id, start)
             );
@@ -811,12 +812,111 @@ class GuideStore
         // "IF NOT EXISTS" leaves a table that already exists alone, so a column added
         // after the first release has to be added by hand.
         $this->addMissingColumns('channels', ['hd' => 'INTEGER NOT NULL DEFAULT 0', 'audio' => 'TEXT']);
+
+        // Where an event came from. Everything written before this column existed was read
+        // off the air, which is what the default says.
+        $this->addMissingColumns('events', ['source' => "TEXT NOT NULL DEFAULT 'psip'"]);
         $this->addMissingColumns('atsc3_channels', [
             'source'     => "TEXT NOT NULL DEFAULT 'lineup'",
             'broadband'  => 'INTEGER NOT NULL DEFAULT 0',
             'stream_url' => 'TEXT',
             'app_url'    => 'TEXT',
         ]);
+    }
+
+    /**
+     * Put an online guide underneath what the air already said, and nowhere else.
+     *
+     * Nine of this market's channels broadcast no guide at all, and nothing can be done
+     * about that from here -- a station that sends no EIT sends none. SiliconDust publishes
+     * a guide for them, and this writes it in, but only where the broadcast is silent: an
+     * event read off the air is left exactly as it is.
+     *
+     * The rule is coverage, not equality. An online programme is skipped when any broadcast
+     * event overlaps the time it claims, because two guides rarely agree on a start to the
+     * second and the air is the one to believe. So a channel with PSIP keeps PSIP and gains
+     * only the hours beyond where PSIP stops; a channel with none gets the lot.
+     *
+     * @param array<string, list<array{start: int, duration: int, title: string, description: ?string, rating: ?string}>> $byChannel keyed by virtual channel number
+     * @return array{channels: int, added: int, skipped: int}
+     */
+    public function fillGapsFromXmltv(string $device, array $byChannel, int $now): array
+    {
+        $counts = ['channels' => 0, 'added' => 0, 'skipped' => 0];
+
+        $this->transaction(function () use ($device, $byChannel, $now, &$counts): void {
+            $channels = $this->db->prepare('SELECT id, virtual FROM channels WHERE device = ?');
+            $channels->execute([$device]);
+
+            // Only what this guide is allowed to replace: its own last writing, from now
+            // on. Yesterday's filler is left where it is, beside the broadcast's own past.
+            $forget = $this->db->prepare("DELETE FROM events WHERE channel_id = ? AND source = 'xmltv' AND start >= CAST(? AS INTEGER)");
+            // Cast for the same reason getGuide() does: PDO binds these as text, and
+            // SQLite ranks any text above any number, so an uncast comparison here finds
+            // no overlap at all and the filler writes straight over the broadcast.
+            $covered = $this->db->prepare(
+                "SELECT 1 FROM events
+                 WHERE channel_id = ? AND source = 'psip'
+                   AND start < CAST(? AS INTEGER) AND start + duration > CAST(? AS INTEGER)
+                 LIMIT 1"
+            );
+            $insert = $this->db->prepare(
+                "INSERT OR REPLACE INTO events (channel_id, event_id, start, duration, title, rating, description, source, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 'xmltv', ?)"
+            );
+
+            foreach ($channels->fetchAll() as $channel) {
+                $programmes = $byChannel[(string) $channel['virtual']] ?? null;
+
+                if ($programmes === null) {
+                    continue;
+                }
+
+                $counts['channels']++;
+                $forget->execute([(int) $channel['id'], $now]);
+
+                foreach ($programmes as $programme) {
+                    if ($programme['start'] + $programme['duration'] <= $now) {
+                        continue;
+                    }
+
+                    $covered->execute([(int) $channel['id'], $programme['start'] + $programme['duration'], $programme['start']]);
+
+                    if ($covered->fetchColumn() !== false) {
+                        $counts['skipped']++;
+
+                        continue;
+                    }
+
+                    $insert->execute([
+                        (int) $channel['id'],
+                        self::xmltvEventId($programme['start'], $programme['title']),
+                        $programme['start'],
+                        $programme['duration'],
+                        $programme['title'],
+                        $programme['rating'],
+                        $programme['description'],
+                        $now,
+                    ]);
+                    $counts['added']++;
+                }
+            }
+        });
+
+        return $counts;
+    }
+
+    /**
+     * An identifier for a programme that was never given one.
+     *
+     * Negative, so it can never be mistaken for a broadcast event id, which is sixteen bits
+     * and always positive. Derived from the programme rather than counted out, so the same
+     * showing keeps the same number when the guide is fetched again and the page does not
+     * see every programme replaced by a stranger.
+     */
+    private static function xmltvEventId(int $start, string $title): int
+    {
+        return -1 - (int) (crc32($start . '|' . $title) % 2_000_000_000);
     }
 
     /**
