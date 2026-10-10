@@ -1,0 +1,99 @@
+<tv><channel id="US21218.hdhomerun.com">
+		<display-name>WFORDT</display-name>
+		<display-name>104.1 WFORDT</display-name>
+		<display-name>104.1 WFOR-TV</display-name>
+		<display-name>104.1</display-name>
+		<display-name>WFOR-TV</display-name>
+		<display-name>CBS</display-name>
+		<lcn>104.1</lcn>
+		<icon src="https://img.hdhomerun.com/channels/US21218.png" width="360" height="270" />
+	</channel>
+	<channel id="US21218.hdhomerun.com">
+		<display-name>WFORDT</display-name>
+		<display-name>4.1 WFORDT</display-name>
+		<display-name>4.1 WFOR-TV</display-name>
+		<display-name>4.1</display-name>
+		<display-name>WFOR-TV</display-name>
+		<display-name>CBS</display-name>
+		<lcn>4.1</lcn>
+		<icon src="https://img.hdhomerun.com/channels/US21218.png" width="360" height="270" />
+	</channel>
+	<channel id="US86439.hdhomerun.com">
+		<display-name>WAMIDT3</display-name>
+		<display-name>69.3 WAMIDT3</display-name>
+		<display-name>69.3 GREAT</display-name>
+		<display-name>69.3</display-name>
+		<display-name>GREAT</display-name>
+		<display-name>GREATTV</display-name>
+		<lcn>69.3</lcn>
+		<icon src="https://img.hdhomerun.com/channels/US86439.png" width="360" height="270" />
+	</channel>
+	<programme start="20261010193000 +0000" stop="20261010230000 +0000" channel="US21218.hdhomerun.com">
+		<title>College Football</title>
+		<sub-title>UCLA at Oregon</sub-title>
+		<desc lang="en">The No. 13 Oregon Ducks host the No. 21 UCLA Bruins in Big Ten Week 6 college football action. Oregon relies on Dante Moore and his 926 total passing yards, while UCLA counts on Nico Iamaleava after his 209-yard win over Maryland.</desc>
+		<date>20261010</date>
+		<category>Sport</category>
+		<category>Football</category>
+		<language>en</language>
+		<icon src="https://img.hdhomerun.com/titles/C191261ENJPCF.jpg" width="360" height="270" />
+		<series-id system="cseries">C191261ENJPCF</series-id>
+		<episode-num system="dd_progid">EP06270099.0810</episode-num>
+		<live />
+		<new />
+		<video>
+			<quality>HDTV</quality>
+		</video>
+	</programme>
+	<programme start="20261010230000 +0000" stop="20261010233000 +0000" channel="US21218.hdhomerun.com">
+		<title>Postgame Show</title>
+		<desc lang="en">College football postgame.</desc>
+		<date>19921022</date>
+		<category>Series</category>
+		<category>Sports talk</category>
+		<language>en</language>
+		<icon src="https://img.hdhomerun.com/titles/C860711ENPCNC.jpg" width="360" height="270" />
+		<series-id system="cseries">C860711ENPCNC</series-id>
+		<episode-num system="dd_progid">SH00050071.0000</episode-num>
+		<live />
+		<new />
+		<video>
+			<quality>HDTV</quality>
+		</video>
+	</programme>
+	<programme start="20261010210000 +0000" stop="20261010220000 +0000" channel="US86439.hdhomerun.com">
+		<title>House</title>
+		<sub-title>Finding Judas</sub-title>
+		<desc lang="en">House takes the divorced parents of a young patient to court when their bickering prevents a decision on her treatment.</desc>
+		<date>20061128</date>
+		<category>Series</category>
+		<category>Drama</category>
+		<category>Medical</category>
+		<category>Mystery</category>
+		<language>en</language>
+		<icon src="https://img.hdhomerun.com/titles/C185044EN5DSC.jpg" width="360" height="270" />
+		<series-id system="cseries">C185044EN5DSC</series-id>
+		<episode-num system="dd_progid">EP00688359.0056</episode-num>
+		<episode-num system="onscreen">S03E09</episode-num>
+		<episode-num system="xmltv_ns">2.8.</episode-num>
+		<previously-shown />
+	</programme>
+	<programme start="20261010220000 +0000" stop="20261010230000 +0000" channel="US86439.hdhomerun.com">
+		<title>House</title>
+		<sub-title>Merry Little Christmas</sub-title>
+		<desc lang="en">House is furious about Wilson striking a deal with Tritter; he tries to diagnose a little person's serious illness.</desc>
+		<date>20061212</date>
+		<category>Series</category>
+		<category>Drama</category>
+		<category>Holiday</category>
+		<category>Medical</category>
+		<category>Mystery</category>
+		<language>en</language>
+		<icon src="https://img.hdhomerun.com/titles/C185044EN5DSC.jpg" width="360" height="270" />
+		<series-id system="cseries">C185044EN5DSC</series-id>
+		<episode-num system="dd_progid">EP00688359.0057</episode-num>
+		<episode-num system="onscreen">S03E10</episode-num>
+		<episode-num system="xmltv_ns">2.9.</episode-num>
+		<previously-shown />
+	</programme>
+	</tv>
