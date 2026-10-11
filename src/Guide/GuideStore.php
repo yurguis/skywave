@@ -19,6 +19,10 @@ use RuntimeException;
  */
 class GuideStore
 {
+    /** How an event's origin is told to the page: off the air, or from the internet. */
+    public const SOURCE_BROADCAST = 'broadcast';
+    public const SOURCE_ONLINE    = 'online';
+
     private PDO $db;
 
     public function __construct(string $path)
@@ -408,7 +412,7 @@ class GuideStore
         // PDO binds parameters as text, and SQLite ranks any text above any number when the
         // other side is an expression rather than a column, hence the casts.
         $events = $this->db->prepare(
-            'SELECT event_id, start, duration, title, rating, description FROM events
+            'SELECT event_id, start, duration, title, rating, description, source FROM events
              WHERE channel_id = ? AND start < CAST(? AS INTEGER) AND start + duration > CAST(? AS INTEGER) ORDER BY start'
         );
 
@@ -423,6 +427,9 @@ class GuideStore
                 'title'       => $event['title'],
                 'rating'      => $event['rating'],
                 'description' => $event['description'],
+                // Where it came from, said the way the page says it rather than the way the
+                // table stores it. Anything the air carried is simply the guide.
+                'source' => ($event['source'] ?? 'psip') === 'xmltv' ? self::SOURCE_ONLINE : self::SOURCE_BROADCAST,
             ], $events->fetchAll());
             $guide[] = $channel;
         }
@@ -458,6 +465,10 @@ class GuideStore
                 'title'       => $event['title'],
                 'rating'      => $event['rating'],
                 'description' => $event['description'],
+                // A service announcing itself is the air speaking. Where it announces
+                // nothing and borrows from the channel below, what it borrows keeps
+                // whatever that was, which may well be the online guide.
+                'source' => self::SOURCE_BROADCAST,
             ], $announced->fetchAll());
 
             $counterpart = self::atsc3Counterpart((string) $channel['virtual']);
