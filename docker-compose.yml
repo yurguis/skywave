@@ -36,6 +36,10 @@ services:
       # newer one would override a RECORDING_PLAYBACK_HEIGHT somebody had already set.
       RECORDING_PLAYBACK_RENDITIONS: ${RECORDING_PLAYBACK_RENDITIONS:-}
       RECORDING_PLAYBACK_HEIGHT: ${RECORDING_PLAYBACK_HEIGHT:-}
+      # A guide refresh asked for from the page runs here, so it needs the same setting as
+      # the collector; see the guide service below for what it does.
+      GUIDE_XMLTV: ${GUIDE_XMLTV:-}
+      GUIDE_XMLTV_TIMEOUT: ${GUIDE_XMLTV_TIMEOUT:-}
       # HTTPS is served as well as HTTP when a certificate and key are mounted below.
       TLS_PORT: ${TLS_PORT:-8443}
       TLS_CERT: ${TLS_CERT:-/certs/fullchain.pem}
@@ -60,6 +64,12 @@ services:
     command: ["php", "tools/guide.php", "run", "--interval=${GUIDE_INTERVAL:-240}", "--log=/data/logs/guide.log"]
     environment:
       HDHOMERUN_DEVICES: ${HDHOMERUN_DEVICES:-}
+      # Some stations broadcast no guide and never will. Set GUIDE_XMLTV=1 to fill those
+      # in from the guide SiliconDust publishes for your tuner, under what the air says and
+      # never over it. Off by default: the guide works with no internet at all, and this is
+      # the one part of it that does not.
+      GUIDE_XMLTV: ${GUIDE_XMLTV:-}
+      GUIDE_XMLTV_TIMEOUT: ${GUIDE_XMLTV_TIMEOUT:-}
     volumes:
       - guide-data:/data
 

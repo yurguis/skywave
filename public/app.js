@@ -683,6 +683,7 @@ function meter(label) {
 // Live playback
 
 const ICON_PATHS = {
+  cloud: 'M6.8 19.5A4.8 4.8 0 0 1 6 10a6.2 6.2 0 0 1 11.8-1.6A4.3 4.3 0 0 1 17.6 19.5Z',
   play: 'M7 5v14l11-7z',
   pause: 'M6 5h4v14H6zM14 5h4v14h-4z',
   volume: 'M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z',
@@ -2484,15 +2485,24 @@ function createGuideView(device, player) {
             const onNow = now >= event.start && now < event.start + event.duration;
             const isSelected = selected && selected.channel.id === channel.id && selected.event.eventId === event.eventId && selected.event.start === event.start;
 
+            // Half a guide can come from the internet, on the channels that broadcast
+            // none and the hours past where the rest stop. Said quietly: an edge down the
+            // side, and the words in the title and the details, so it does not rest on
+            // colour alone and does not shout on every second programme.
+            const online = event.source === 'online';
+            const when = `${timeFormat.format(event.start * 1000)}–${timeFormat.format((event.start + event.duration) * 1000)}`;
+
             return h('button', {
               type: 'button',
-              class: `guide-event${onNow ? ' now' : ''}${isSelected ? ' selected' : ''}`,
+              class: `guide-event${onNow ? ' now' : ''}${isSelected ? ' selected' : ''}${online ? ' is-online' : ''}`,
               style: `left:${left}%;width:${Math.max(0, right - left)}%`,
-              title: `${event.title} · ${timeFormat.format(event.start * 1000)}–${timeFormat.format((event.start + event.duration) * 1000)}`,
+              title: `${event.title} · ${when}${online ? ' · from the online guide' : ''}`,
               onclick: () => { selected = { channel, event }; render(); },
             },
               h('span', { class: 'title' }, event.title),
-              h('span', { class: 'time' }, `${timeFormat.format(event.start * 1000)} · ${formatDuration(event.duration)}`),
+              h('span', { class: 'time' },
+                online && icon('cloud'),
+                `${timeFormat.format(event.start * 1000)} · ${formatDuration(event.duration)}`),
             );
           }),
           nowMarker(),
@@ -2529,7 +2539,10 @@ function createGuideView(device, player) {
       h('p', { class: 'muted' },
         `${channel.virtual} ${channel.name} · ${dayFormat.format(start)}, ${timeFormat.format(start)}–${timeFormat.format(end)} · ${formatDuration(event.duration)} `,
         channel.hd && h('span', { class: 'badge hd' }, 'HD'),
-        onNow && h('span', { class: 'badge locked' }, 'on now')),
+        onNow && h('span', { class: 'badge locked' }, 'on now'),
+        // Said in words here, where there is room for them: the edge on the grid is a
+        // reminder, not the only way to know.
+        event.source === 'online' && h('span', { class: 'badge is-online' }, icon('cloud'), 'online guide')),
       // The picture and what the programme is about, side by side. h() drops a falsy
       // child, so with no picture the description simply has the row to itself.
       h('div', { class: 'programme-detail' },

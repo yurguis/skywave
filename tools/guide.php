@@ -27,6 +27,7 @@ use Skywave\Guide\GuideCollector;
 use Skywave\Guide\GuideJobs;
 use Skywave\Guide\GuideStore;
 use Skywave\Guide\ProgrammeArtwork;
+use Skywave\Guide\XmltvGuide;
 use Skywave\Hdhomerun\Device;
 use Skywave\Hdhomerun\Discovery;
 use Skywave\Hdhomerun\Exception\HdhomerunException;
@@ -99,6 +100,12 @@ switch ($positional[0] ?? '') {
             refreshLogos($host, $log);
         }
 
+        // Refreshing the guide by hand should fill the gap channels too, or the page would
+        // offer a refresh that quietly skipped the very channels it was wanted for.
+        if ($status === 0 && $command === 'collect') {
+            fillOnlineGuide($host, $store, $log);
+        }
+
         exit($status);
 
     case 'run':
@@ -127,6 +134,10 @@ switch ($positional[0] ?? '') {
                     }
 
                     $collector->collect($device, $map);
+
+                    // Some stations broadcast no guide at all and never will. When asked
+                    // to, fill those in under what the air said, never over it.
+                    fillOnlineGuide($host, $store, $log);
 
                     // Pictures for whatever is now in the guide. Fetched here rather than
                     // when a page loads, so nobody waits on someone else's service.
@@ -186,6 +197,37 @@ switch ($positional[0] ?? '') {
  * The only part of this application that wants the internet; when it cannot have it, the
  * channels simply show their names.
  */
+/**
+ * Fill the channels that broadcast no guide from the one their maker publishes.
+ *
+ * Off unless GUIDE_XMLTV is set, and never fatal: a guide read off the air is still a
+ * guide, and this reaches off the machine, which is the one thing the rest of it does not.
+ */
+function fillOnlineGuide(string $host, GuideStore $store, callable $log): void
+{
+    $xmltv = XmltvGuide::fromEnvironment();
+
+    if ($xmltv === null) {
+        return;
+    }
+
+    try {
+        $discovered = Device::at($host)->getDiscovered();
+
+        if ($discovered === null) {
+            $log("No online guide for $host: discovery did not answer, so there is no token to ask with");
+
+            return;
+        }
+
+        $filled = $xmltv->fill($host, $discovered, $store);
+
+        $log("Online guide: {$filled['added']} programmes added on {$filled['channels']} channel(s), {$filled['skipped']} left to the broadcast");
+    } catch (Throwable $e) {
+        $log('Online guide unavailable: ' . $e->getMessage());
+    }
+}
+
 function refreshLogos(string $host, callable $log, bool $force = false): int
 {
     $logos = ChannelLogos::fromEnvironment();

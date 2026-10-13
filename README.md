@@ -362,6 +362,37 @@ device. With `--capture`, a raw MPEG-TS recording is broadcast on one channel wi
 real lineup and replayed in a loop at its original bitrate; other channels have no signal.
 Use `--bind=0.0.0.0` to make it discoverable by broadcast.
 
+## A guide for channels that broadcast none
+
+Skywave reads its guide off the air, which is why it works with no internet at all. Some
+stations send no guide, though, and no amount of listening will find one: here, nine of
+fifty-seven channels have never carried a single event.
+
+SiliconDust publishes a guide for the channels your tuner receives, and `GUIDE_XMLTV=1`
+uses it to fill those gaps:
+
+```bash
+echo 'GUIDE_XMLTV=1' >> .env
+docker compose up -d
+```
+
+**It is a filler, not a replacement.** What the station broadcasts is always kept; the
+online guide is written only where the air said nothing. On a channel that broadcasts a
+guide you get its own events, and then the online ones take over at the hour the broadcast
+stops. Nothing is ever written over a broadcast event, and when a station that was silent
+starts sending a guide, what it says replaces what stood in for it.
+
+Measured here: the broadcast guide reached 26 hours ahead, and with this on, 48. The nine
+silent channels went from nothing to a full schedule.
+
+**What it costs you.** The guide stops being purely local. If the service is unreachable
+the collector logs it and carries on with the broadcast guide, so nothing breaks — but
+those gap channels go back to being blank. It uses the same device token that already
+fetches channel logos, so nothing new leaves your network, and it is off unless you set it.
+
+The free tier is about **two days** ahead. Fourteen needs an HDHomeRun DVR guide
+subscription; a shorter answer than you expected is how you can tell which one you have.
+
 ## HD Radio
 
 Digital FM stations, received with an RTL-SDR dongle rather than an HDHomeRun, which
@@ -575,6 +606,8 @@ Settings (environment variables):
 | `HLS_DVR_MINUTES` | `5` | How far back a live stream can be rewound (kept in memory in Docker, for every rendition) |
 | `HLS_VIEWER_TIMEOUT` | `30` | Seconds without a viewer before a stream stops |
 | `GUIDE_INTERVAL` | `240` | Minutes between automatic guide updates (guide service) |
+| `GUIDE_XMLTV` | | `1` to fill channels that broadcast no guide from SiliconDust's. See [A guide for channels that broadcast none](#a-guide-for-channels-that-broadcast-none) |
+| `GUIDE_XMLTV_TIMEOUT` | `60` | Seconds to wait on that service before giving up |
 | `GUIDE_DB` | `/data/guide.sqlite` | Guide database (`data/guide.sqlite` outside Docker), which also holds recordings |
 | `RECORDINGS_DIR` | `./data/recordings` | Folder for recordings, mounted at `/recordings` in the containers |
 | `RECORDING_HEIGHT` | `720` | Picture height for an `mp4` copy |
@@ -719,8 +752,10 @@ anyone on the path.
 - **Every conversion runs on this machine.** HDHomeRun tuners do not transcode, so each
   viewer watching a different program costs CPU here.
 - **The guide comes from the broadcast**, so it covers only what your antenna receives:
-  about twelve hours on a typical channel, a little over a day at the furthest. Station
-  logos and programme pictures are fetched from the internet once and then served locally.
+  a day or so ahead on a typical channel. Some stations broadcast no guide at all and never
+  will, and nothing here can change that -- `GUIDE_XMLTV` fills those in from the internet
+  if you want it to. Station logos and programme pictures are fetched from the internet once
+  and then served locally.
 - **Windows has been run, on one machine.** Playback, recordings and background guide jobs
   each start a process that has to outlive the request, which on Windows means PowerShell
   rather than `setsid`, and `tasklist` and `taskkill` rather than signals. That path works:
