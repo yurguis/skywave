@@ -150,8 +150,22 @@ switch ($positional[0] ?? '') {
                     // Whatever has just come into view and matches a rule is scheduled now.
                     $rules = $series->evaluate($host);
 
-                    if ($rules['scheduled'] > 0) {
-                        $log("Series rules scheduled {$rules['scheduled']} showing(s) on $host");
+                    if ($rules['scheduled'] > 0 || $rules['hadAlready'] > 0 || $rules['repeats'] > 0) {
+                        // Says what it left alone as well as what it took, because a rule
+                        // that schedules nothing is otherwise indistinguishable from a rule
+                        // that is not working.
+                        $left = [];
+
+                        if ($rules['hadAlready'] > 0) {
+                            $left[] = "{$rules['hadAlready']} already recorded";
+                        }
+
+                        if ($rules['repeats'] > 0) {
+                            $left[] = "{$rules['repeats']} repeat(s)";
+                        }
+
+                        $log("Series rules scheduled {$rules['scheduled']} showing(s) on $host"
+                            . ($left === [] ? '' : ', passing over ' . implode(' and ', $left)));
                     }
                 }) !== 0 || $failed;
             }

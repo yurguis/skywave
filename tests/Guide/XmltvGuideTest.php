@@ -105,7 +105,9 @@ class XmltvGuideTest extends TestCase
             '69.3' => [self::programme($now, 1800, 'Online, the only guide there is')],
         ], $now);
 
-        $this->assertSame(['channels' => 2, 'added' => 2, 'skipped' => 1], $counts);
+        // Not "identified": a half-hour programme sitting inside an hour of broadcast is
+        // not the same showing as it, so nothing is said about which episode that hour is.
+        $this->assertSame(['channels' => 2, 'added' => 2, 'identified' => 0, 'skipped' => 1], $counts);
 
         $titles = fn (string $virtual): array => array_column($this->events($store, $virtual), 'title');
 
@@ -148,6 +150,87 @@ class XmltvGuideTest extends TestCase
         ]]]);
 
         $this->assertSame(['The station itself'], array_column($this->events($store, '69.3'), 'title'));
+    }
+
+    public function testTheSameShowingLendsItsEpisodeToTheBroadcast(): void
+    {
+        // The two guides do not agree to the second -- one says 03:34, the other 03:35 --
+        // and the broadcast says nothing about which episode it is. So the listing stays
+        // the broadcast's and only the identity is taken.
+        $store = new GuideStore($this->directory . '/guide.sqlite');
+        $now   = 1_800_000_000;
+
+        $this->seed($store, 'tuner', [['virtual' => '6.1', 'name' => 'WTVJ', 'events' => [
+            ['eventId' => 11, 'start' => $now + 60, 'duration' => 3600, 'title' => 'The Tonight Show'],
+        ]]]);
+
+        $counts = $store->fillGapsFromXmltv('tuner', ['6.1' => [[
+            'start'           => $now, 'duration' => 3600, 'title' => 'The Tonight Show',
+            'description'     => 'Guests', 'rating' => null, 'subTitle' => 'Hailee Steinfeld',
+            'programmeId'     => 'EP01721107.2622', 'episode' => 'S14E07',
+            'originalAirDate' => $now - 14 * 86400, 'repeat' => true,
+        ]]], $now);
+
+        $this->assertSame(1, $counts['identified']);
+        $this->assertSame(0, $counts['added'], 'the broadcast keeps its own listing');
+
+        $events = $this->events($store, '6.1');
+
+        $this->assertCount(1, $events);
+        $this->assertSame('The Tonight Show', $events[0]['title']);
+        $this->assertSame('S14E07', $events[0]['episode']);
+        $this->assertSame('EP01721107.2622', $events[0]['programmeId']);
+        $this->assertSame('Hailee Steinfeld', $events[0]['subTitle']);
+        $this->assertTrue($events[0]['repeat']);
+        $this->assertSame('broadcast', $events[0]['source'], 'still the broadcast speaking');
+    }
+
+    public function testADifferentShowingLendsNothing(): void
+    {
+        // A film the online guide lists as two hours, against four half-hour programmes the
+        // broadcast lists under it. All of each half hour lies inside the film, so a looser
+        // rule would label all four of them with the film's episode.
+        $store = new GuideStore($this->directory . '/guide.sqlite');
+        $now   = 1_800_000_000;
+
+        $this->seed($store, 'tuner', [['virtual' => '7.1', 'name' => 'WSVN', 'events' => array_map(
+            static fn (int $i): array => [
+                'eventId' => 20 + $i, 'start' => $now + $i * 1800, 'duration' => 1800, 'title' => "Part $i",
+            ],
+            [0, 1, 2, 3]
+        )]]);
+
+        $store->fillGapsFromXmltv('tuner', ['7.1' => [[
+            'start'           => $now, 'duration' => 7200, 'title' => 'A Long Film',
+            'description'     => null, 'rating' => null, 'subTitle' => null,
+            'programmeId'     => 'MV00004362.0000', 'episode' => null,
+            'originalAirDate' => null, 'repeat' => false,
+        ]]], $now);
+
+        foreach ($this->events($store, '7.1') as $event) {
+            $this->assertNull($event['programmeId'], "{$event['title']} is not the film");
+        }
+    }
+
+    public function testAnEpisodeIsKeptWithAListingTheAirNeverCarried(): void
+    {
+        $store = new GuideStore($this->directory . '/guide.sqlite');
+        $now   = 1_800_000_000;
+
+        $this->seed($store, 'tuner', [['virtual' => '69.3', 'name' => 'GREAT', 'events' => []]]);
+
+        $store->fillGapsFromXmltv('tuner', ['69.3' => [[
+            'start'           => $now, 'duration' => 3600, 'title' => 'The Rockford Files',
+            'description'     => null, 'rating' => null, 'subTitle' => 'The Kirkoff Case',
+            'programmeId'     => 'EP00018693.0002', 'episode' => 'S01E02',
+            'originalAirDate' => 157_766_400, 'repeat' => true,
+        ]]], $now);
+
+        $event = $this->events($store, '69.3')[0];
+
+        $this->assertSame('S01E02', $event['episode']);
+        $this->assertSame('EP00018693.0002', $event['programmeId']);
+        $this->assertSame('online', $event['source']);
     }
 
     /** @return array{start: int, duration: int, title: string, description: ?string, rating: ?string} */

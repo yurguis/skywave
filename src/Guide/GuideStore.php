@@ -412,7 +412,8 @@ class GuideStore
         // PDO binds parameters as text, and SQLite ranks any text above any number when the
         // other side is an expression rather than a column, hence the casts.
         $events = $this->db->prepare(
-            'SELECT event_id, start, duration, title, rating, description, source FROM events
+            'SELECT event_id, start, duration, title, rating, description, source,
+                    programme_id, episode, sub_title, original_air_date, is_repeat FROM events
              WHERE channel_id = ? AND start < CAST(? AS INTEGER) AND start + duration > CAST(? AS INTEGER) ORDER BY start'
         );
 
@@ -430,6 +431,13 @@ class GuideStore
                 // Where it came from, said the way the page says it rather than the way the
                 // table stores it. Anything the air carried is simply the guide.
                 'source' => ($event['source'] ?? 'psip') === 'xmltv' ? self::SOURCE_ONLINE : self::SOURCE_BROADCAST,
+                // Which showing of a programme this is. A broadcast says none of it; where
+                // these are filled in at all, the online guide is what filled them.
+                'programmeId'     => $event['programme_id'] ?? null,
+                'episode'         => $event['episode'] ?? null,
+                'subTitle'        => $event['sub_title'] ?? null,
+                'originalAirDate' => isset($event['original_air_date']) ? (int) $event['original_air_date'] : null,
+                'repeat'          => (bool) ($event['is_repeat'] ?? false),
             ], $events->fetchAll());
             $guide[] = $channel;
         }
@@ -469,6 +477,13 @@ class GuideStore
                 // nothing and borrows from the channel below, what it borrows keeps
                 // whatever that was, which may well be the online guide.
                 'source' => self::SOURCE_BROADCAST,
+                // An ATSC 3.0 service announcing itself says no more about which episode it
+                // is than any other broadcast does.
+                'programmeId'     => null,
+                'episode'         => null,
+                'subTitle'        => null,
+                'originalAirDate' => null,
+                'repeat'          => false,
             ], $announced->fetchAll());
 
             $counterpart = self::atsc3Counterpart((string) $channel['virtual']);
@@ -827,6 +842,17 @@ class GuideStore
         // Where an event came from. Everything written before this column existed was read
         // off the air, which is what the default says.
         $this->addMissingColumns('events', ['source' => "TEXT NOT NULL DEFAULT 'psip'"]);
+
+        // What a broadcast cannot say about a showing: which episode it is, when it first
+        // aired, and whether it is a repeat. Only the online guide knows, and it tells us
+        // even about showings it does not otherwise describe.
+        $this->addMissingColumns('events', [
+            'programme_id'      => 'TEXT',
+            'episode'           => 'TEXT',
+            'sub_title'         => 'TEXT',
+            'original_air_date' => 'INTEGER',
+            'is_repeat'         => 'INTEGER NOT NULL DEFAULT 0',
+        ]);
         $this->addMissingColumns('atsc3_channels', [
             'source'     => "TEXT NOT NULL DEFAULT 'lineup'",
             'broadband'  => 'INTEGER NOT NULL DEFAULT 0',
@@ -853,7 +879,7 @@ class GuideStore
      */
     public function fillGapsFromXmltv(string $device, array $byChannel, int $now): array
     {
-        $counts = ['channels' => 0, 'added' => 0, 'skipped' => 0];
+        $counts = ['channels' => 0, 'added' => 0, 'identified' => 0, 'skipped' => 0];
 
         $this->transaction(function () use ($device, $byChannel, $now, &$counts): void {
             $channels = $this->db->prepare('SELECT id, virtual FROM channels WHERE device = ?');
@@ -862,18 +888,30 @@ class GuideStore
             // Only what this guide is allowed to replace: its own last writing, from now
             // on. Yesterday's filler is left where it is, beside the broadcast's own past.
             $forget = $this->db->prepare("DELETE FROM events WHERE channel_id = ? AND source = 'xmltv' AND start >= CAST(? AS INTEGER)");
-            // Cast for the same reason getGuide() does: PDO binds these as text, and
-            // SQLite ranks any text above any number, so an uncast comparison here finds
-            // no overlap at all and the filler writes straight over the broadcast.
-            $covered = $this->db->prepare(
-                "SELECT 1 FROM events
+
+            // Cast for the same reason getGuide() does: PDO binds these as text, and SQLite
+            // ranks any text above any number, so an uncast comparison here finds no overlap
+            // at all and the filler writes straight over the broadcast.
+            $overlapping = $this->db->prepare(
+                "SELECT event_id, start, duration FROM events
                  WHERE channel_id = ? AND source = 'psip'
-                   AND start < CAST(? AS INTEGER) AND start + duration > CAST(? AS INTEGER)
-                 LIMIT 1"
+                   AND start < CAST(? AS INTEGER) AND start + duration > CAST(? AS INTEGER)"
             );
+
+            // Where the broadcast describes a showing the online guide does not replace it,
+            // but it still knows which episode that showing is and the broadcast never does.
+            // So the listing is left alone and only its identity is written in.
+            $identify = $this->db->prepare(
+                'UPDATE events SET programme_id = ?, episode = ?, sub_title = ?,
+                        original_air_date = ?, is_repeat = ?
+                 WHERE channel_id = ? AND event_id = ? AND start = CAST(? AS INTEGER)'
+            );
+
             $insert = $this->db->prepare(
-                "INSERT OR REPLACE INTO events (channel_id, event_id, start, duration, title, rating, description, source, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, 'xmltv', ?)"
+                "INSERT OR REPLACE INTO events
+                    (channel_id, event_id, start, duration, title, rating, description,
+                     programme_id, episode, sub_title, original_air_date, is_repeat, source, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'xmltv', ?)"
             );
 
             foreach ($channels->fetchAll() as $channel) {
@@ -891,9 +929,30 @@ class GuideStore
                         continue;
                     }
 
-                    $covered->execute([(int) $channel['id'], $programme['start'] + $programme['duration'], $programme['start']]);
+                    $overlapping->execute([
+                        (int) $channel['id'],
+                        $programme['start'] + $programme['duration'],
+                        $programme['start'],
+                    ]);
+                    $broadcast = $overlapping->fetchAll();
 
-                    if ($covered->fetchColumn() !== false) {
+                    if ($broadcast !== []) {
+                        $same = self::sameShowing($programme, $broadcast);
+
+                        if ($same !== null) {
+                            $identify->execute([
+                                $programme['programmeId'] ?? null,
+                                $programme['episode'] ?? null,
+                                $programme['subTitle'] ?? null,
+                                $programme['originalAirDate'] ?? null,
+                                ($programme['repeat'] ?? false) ? 1 : 0,
+                                (int) $channel['id'],
+                                (int) $same['event_id'],
+                                (int) $same['start'],
+                            ]);
+                            $counts['identified']++;
+                        }
+
                         $counts['skipped']++;
 
                         continue;
@@ -907,6 +966,11 @@ class GuideStore
                         $programme['title'],
                         $programme['rating'],
                         $programme['description'],
+                        $programme['programmeId'] ?? null,
+                        $programme['episode'] ?? null,
+                        $programme['subTitle'] ?? null,
+                        $programme['originalAirDate'] ?? null,
+                        ($programme['repeat'] ?? false) ? 1 : 0,
                         $now,
                     ]);
                     $counts['added']++;
@@ -915,6 +979,46 @@ class GuideStore
         });
 
         return $counts;
+    }
+
+    /**
+     * Which broadcast event, if any, is the same showing as this online programme.
+     *
+     * The two guides do not agree to the second -- one says a programme starts at 03:34 and
+     * the other 03:35 -- so they are matched by how much of each lies inside the other.
+     * Most of both, and it is the same showing. That rules out the case this has to get
+     * right: an online guide listing two hours of film where the broadcast lists four
+     * half-hour programmes, where the overlap is all of each half hour and a quarter of the
+     * film, and calling any of them the same showing would label three programmes wrongly.
+     *
+     * @param array{start: int, duration: int} $programme
+     * @param list<array<string, mixed>>       $broadcast
+     * @return array<string, mixed>|null
+     */
+    private static function sameShowing(array $programme, array $broadcast): ?array
+    {
+        $best = null;
+        $most = 0.0;
+        $ends = $programme['start'] + $programme['duration'];
+
+        foreach ($broadcast as $event) {
+            $start    = (int) $event['start'];
+            $duration = (int) $event['duration'];
+            $overlap  = min($ends, $start + $duration) - max($programme['start'], $start);
+
+            if ($overlap <= 0 || $duration <= 0 || $programme['duration'] <= 0) {
+                continue;
+            }
+
+            $share = min($overlap / $duration, $overlap / $programme['duration']);
+
+            if ($share >= 0.7 && $share > $most) {
+                $best = $event;
+                $most = $share;
+            }
+        }
+
+        return $best;
     }
 
     /**

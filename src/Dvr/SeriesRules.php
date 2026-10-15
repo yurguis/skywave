@@ -23,6 +23,12 @@ use Skywave\Guide\GuideStore;
  * a description, so a rule can only match a title on a channel. The time of day and the
  * weekday are what narrow it: "Jeopardy! on 6.1 between 18:00 and 20:00" takes the evening
  * showing and leaves the small-hours repeat alone.
+ *
+ * Where an online guide stands behind the broadcast, more is known. It names every showing
+ * with an identifier that does not change between airings, so an episode already recorded
+ * can be left alone however often it comes round, and it marks repeats, so a rule can be
+ * told to take first showings only. Neither is possible on a channel with no online guide
+ * behind it, and there nothing changes: the rule matches on the title as it always did.
  */
 class SeriesRules
 {
@@ -49,7 +55,7 @@ class SeriesRules
     /**
      * Schedule everything in view that a rule asks for.
      *
-     * @return array{rules: int, scheduled: int}
+     * @return array{rules: int, scheduled: int, hadAlready: int, repeats: int}
      */
     public function evaluate(?string $device = null, ?int $now = null): array
     {
@@ -62,6 +68,14 @@ class SeriesRules
 
         $guide     = $this->guide->getGuide($now, $now + self::WINDOW_SECONDS, $device);
         $scheduled = 0;
+        $skipped   = ['recorded' => 0, 'repeat' => 0];
+
+        // Asked once for the whole pass. Every showing in view carries an identifier where
+        // one is known, and asking the store per showing would be a query per programme.
+        $already = $this->recordings->recordedEpisodes(array_merge(...array_map(
+            static fn (array $channel): array => array_column($channel['events'], 'programmeId'),
+            $guide
+        ) ?: [[]]));
 
         foreach ($rules as $rule) {
             $fromThisRule = 0;
@@ -84,6 +98,28 @@ class SeriesRules
                         continue;
                     }
 
+                    // An episode that has already been recorded, whenever that was and
+                    // whether or not the recording is still on the drive. A week of
+                    // repeats otherwise fills the disk with what is already on it.
+                    $programmeId = isset($event['programmeId']) && is_string($event['programmeId'])
+                        ? trim($event['programmeId'])
+                        : '';
+
+                    if ($programmeId !== '' && isset($already[$programmeId])) {
+                        $skipped['recorded']++;
+
+                        continue;
+                    }
+
+                    // And, where the rule asks for it, anything the guide marks as shown
+                    // before. A showing with no online guide behind it is never marked, so
+                    // this leaves such channels exactly as they were.
+                    if (!empty($rule['newOnly']) && !empty($event['repeat'])) {
+                        $skipped['repeat']++;
+
+                        continue;
+                    }
+
                     if ($fromThisRule >= self::MAX_PER_EVALUATION) {
                         // The rest stay for the next pass, by which time the earlier ones
                         // have been recorded and no longer count against the limit.
@@ -97,6 +133,8 @@ class SeriesRules
                         'virtual'     => $rule['virtual'],
                         'channelName' => $rule['channelName'],
                         'eventId'     => $event['eventId'] ?? null,
+                        'programmeId' => $programmeId === '' ? null : $programmeId,
+                        'episode'     => $event['episode'] ?? null,
                         'start'       => (int) $event['start'],
                         'duration'    => (int) $event['duration'],
                         'title'       => $event['title'],
@@ -110,7 +148,12 @@ class SeriesRules
             }
         }
 
-        return ['rules' => count($rules), 'scheduled' => $scheduled];
+        return [
+            'rules'      => count($rules),
+            'scheduled'  => $scheduled,
+            'hadAlready' => $skipped['recorded'],
+            'repeats'    => $skipped['repeat'],
+        ];
     }
 
     /**

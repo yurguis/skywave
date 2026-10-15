@@ -134,13 +134,37 @@ class SeriesRuleApiTest extends TestCase
         $this->assertSame(RecordingStore::KEPT, $created['body']['rule']['format']);
     }
 
-    public function testThereIsNoLongerAnythingToChangeOnARule(): void
+    public function testTheOnlyThingToChangeOnARuleIsWhetherItTakesRepeats(): void
     {
         $id = $this->send('POST', '/api/recordings/rules', $this->body())['body']['id'];
 
-        $response = $this->send('PATCH', "/api/recordings/rules/$id", ['format' => 'mp4']);
+        // Nothing else is changeable: a rule is cheap to make again, and the format or the
+        // padding of one already evaluated would not apply to what it has scheduled.
+        $this->assertSame(400, $this->send('PATCH', "/api/recordings/rules/$id", ['format' => 'mp4'])['status']);
+    }
 
-        $this->assertSame(405, $response['status']);
+    public function testARuleCanBeToldToTakeFirstShowingsOnly(): void
+    {
+        $created = $this->send('POST', '/api/recordings/rules', $this->body());
+        $id      = $created['body']['id'];
+
+        $this->assertFalse($created['body']['rule']['newOnly'], 'everything, until asked otherwise');
+
+        $changed = $this->send('PATCH', "/api/recordings/rules/$id", ['newOnly' => true]);
+
+        $this->assertSame(200, $changed['status']);
+        $this->assertTrue($changed['body']['rules'][0]['newOnly']);
+
+        $back = $this->send('PATCH', "/api/recordings/rules/$id", ['newOnly' => false]);
+
+        $this->assertFalse($back['body']['rules'][0]['newOnly']);
+    }
+
+    public function testARuleCanBeMadeAskingForFirstShowingsOnly(): void
+    {
+        $created = $this->send('POST', '/api/recordings/rules', $this->body(['newOnly' => true]));
+
+        $this->assertTrue($created['body']['rule']['newOnly']);
     }
 
     public function testASeriesCanBeToldToKeepRecordingAfterTheDueEnd(): void
@@ -179,6 +203,22 @@ class SeriesRuleApiTest extends TestCase
      * @param array<string, mixed> $overrides
      * @return array<string, mixed>
      */
+    public function testAnEpisodeCanBeForgottenSoItIsTakenAgain(): void
+    {
+        $this->recordings->rememberEpisode('EP01721107.2622', 'The Tonight Show', 'S14E07');
+
+        $this->assertSame(['EP01721107.2622' => true], array_map(
+            static fn ($at): bool => $at > 0,
+            $this->recordings->recordedEpisodes(['EP01721107.2622'])
+        ));
+
+        $response = $this->send('DELETE', '/api/recordings/episodes/EP01721107.2622');
+
+        $this->assertSame(200, $response['status']);
+        $this->assertTrue($response['body']['forgotten']);
+        $this->assertSame([], $this->recordings->recordedEpisodes(['EP01721107.2622']));
+    }
+
     private function body(array $overrides = []): array
     {
         return $overrides + [

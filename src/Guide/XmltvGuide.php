@@ -105,7 +105,13 @@ final class XmltvGuide
      * schedule. Both numbers are kept and both are filled, because a lineup may hold either
      * or both and neither is the wrong answer.
      *
-     * @return array<string, list<array{start: int, duration: int, title: string, description: ?string, rating: ?string}>>
+     * Episode identity is kept as well as the listing. A broadcast says only a title and
+     * sometimes a description, which cannot tell one showing of a programme from another;
+     * this service gives every programme a lasting identifier, the episode number, the day
+     * it first aired, and whether this showing is a repeat. That is what makes it possible
+     * to know an episode has already been recorded.
+     *
+     * @return array<string, list<array{start: int, duration: int, title: string, description: ?string, rating: ?string, programmeId: ?string, episode: ?string, subTitle: ?string, originalAirDate: ?int, repeat: bool}>>
      */
     public static function parse(string $xml): array
     {
@@ -172,13 +178,32 @@ final class XmltvGuide
 
             $description = trim((string) $node->desc);
             $rating      = trim((string) ($node->rating->value ?? ''));
+            $subTitle    = trim((string) $node->{'sub-title'});
+
+            // Several numbering systems are given at once. dd_progid is the one that names
+            // the programme itself and does not change between showings, which is the whole
+            // use of it here; onscreen is the "S14E07" a person would recognise.
+            $identifiers = [];
+
+            foreach ($node->{'episode-num'} as $number) {
+                $identifiers[(string) $number->attributes()->system] = trim((string) $number);
+            }
+
+            // Marked as shown before, or carrying the date it first aired and that date not
+            // being today's showing. Either way it is a repeat.
+            $repeat = isset($node->{'previously-shown'});
 
             $programmes[$channel][] = [
-                'start'       => $start,
-                'duration'    => $stop - $start,
-                'title'       => $title,
-                'description' => $description === '' ? null : $description,
-                'rating'      => $rating === '' ? null : $rating,
+                'start'           => $start,
+                'duration'        => $stop - $start,
+                'title'           => $title,
+                'description'     => $description === '' ? null : $description,
+                'rating'          => $rating === '' ? null : $rating,
+                'subTitle'        => $subTitle === '' ? null : $subTitle,
+                'programmeId'     => ($identifiers['dd_progid'] ?? '') === '' ? null : $identifiers['dd_progid'],
+                'episode'         => ($identifiers['onscreen'] ?? '') === '' ? null : $identifiers['onscreen'],
+                'originalAirDate' => self::day(trim((string) $node->date)),
+                'repeat'          => $repeat,
             ];
         }
 
@@ -199,6 +224,20 @@ final class XmltvGuide
         }
 
         return $byNumber;
+    }
+
+    /**
+     * The day a programme first aired: "20260929", or nothing when it does not say.
+     */
+    private static function day(string $value): ?int
+    {
+        if (!preg_match('/^(\d{4})(\d{2})(\d{2})/', $value, $match)) {
+            return null;
+        }
+
+        $when = strtotime("$match[1]-$match[2]-$match[3] 00:00:00 UTC");
+
+        return $when === false ? null : $when;
     }
 
     /**
