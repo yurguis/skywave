@@ -1207,9 +1207,31 @@ class Api
         }
 
         if (preg_match('#^/api/recordings/rules/(\d+)$#', $path, $match)) {
+            // Changing whether a rule takes repeats, without having to make it again.
+            if ($method === 'PATCH') {
+                $body = self::jsonBody($request);
+
+                if (!isset($body['newOnly'])) {
+                    throw new ApiException('Expected {"newOnly": true|false}', 400);
+                }
+
+                $store->setRuleNewOnly((int) $match[1], (bool) $body['newOnly']);
+                $scheduled = $this->series === null ? 0 : $this->series->evaluate()['scheduled'];
+
+                return ['rules' => $store->getRules(), 'scheduled' => $scheduled];
+            }
+
             self::requireMethod($method, 'DELETE');
 
             return ['cancelled' => $store->deleteRule((int) $match[1])];
+        }
+
+        // Forget that an episode was recorded, so a rule may take it again. The identifier
+        // is the guide's own and is shown with the programme.
+        if (preg_match('#^/api/recordings/episodes/([A-Za-z0-9._-]{1,64})$#', $path, $match)) {
+            self::requireMethod($method, 'DELETE');
+
+            return ['forgotten' => $store->forgetEpisode($match[1])];
         }
 
         if (preg_match('#^/api/recordings/schedules/(\d+)$#', $path, $match)) {
@@ -1430,6 +1452,9 @@ class Api
             'timezone'    => is_string($body['timezone'] ?? null) && $body['timezone'] !== '' ? $body['timezone'] : 'UTC',
             'padStart'    => self::padding($body['padStart'] ?? null, 'RECORDING_PAD_START', 60),
             'padEnd'      => self::padding($body['padEnd'] ?? null, 'RECORDING_PAD_END', 180, 3600),
+            // Only where the guide says so, which is where an online guide stands behind
+            // the broadcast; a channel without one marks nothing and this changes nothing.
+            'newOnly' => !empty($body['newOnly']),
         ];
 
         $id = $store->addRule($rule);

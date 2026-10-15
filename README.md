@@ -311,6 +311,31 @@ What a rule can match is limited by what the air carries. ATSC has no series ide
 no repeat flag, and here only about one event in twenty carries a description, so a rule
 matches **a title on a channel** — every showing of it.
 
+#### Episodes it already has
+
+Where an online guide stands behind the broadcast (`GUIDE_XMLTV`, see
+[A guide for channels that broadcast none](#a-guide-for-channels-that-broadcast-none)), more
+is known. That guide gives every showing an identifier that does not change between airings,
+so a rule can tell one episode from another even when the broadcast carries no description
+at all — which is the usual case here.
+
+Two things follow:
+
+- **An episode already recorded is never recorded again.** A week of repeats of a programme
+  already on the drive is passed over. This is remembered separately from the recordings
+  themselves, so deleting one to make room does not bring the episode back; the guide still
+  lists it and it can still be recorded by hand.
+- **A rule can take first showings only.** The button on each rule in the Recordings tab
+  switches between *every showing* and *first showings*. That catches repeats you never
+  recorded in the first place — a channel running last season through the night — which the
+  guide marks and there is otherwise no way to decline.
+
+Neither applies on a channel with no online guide behind it. Nothing there marks a repeat or
+names an episode, so such a rule behaves exactly as it always did and takes every showing.
+
+To record an episode again after all, forget it with
+`DELETE /api/recordings/episodes/{programmeId}`.
+
 A rule can also be narrowed to a range of hours and a set of weekdays, which is how you take
 the evening showing and leave the small-hours repeat alone:
 
@@ -326,8 +351,9 @@ the same series twice makes one rule, not two. One rule schedules at most eight 
 single pass: some channels run the same programme all afternoon, and one press should not
 take every tuner. The rest are picked up by later passes, as the earlier ones finish.
 
-Rules are listed in the Recordings tab, where they can be cancelled. Cancelling one leaves
-the recordings it already made, and any showing already scheduled.
+Rules are listed in the Recordings tab, where they can be cancelled and switched between
+every showing and first showings. Cancelling one leaves the recordings it already made, and
+any showing already scheduled.
 
 ### Logs
 

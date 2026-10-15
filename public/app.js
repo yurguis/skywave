@@ -3056,11 +3056,28 @@ function createRecordingsView(device, player) {
       h('span', { class: 'what' },
         h('span', { class: 'title' }, rule.title),
         h('span', { class: 'muted series-when' },
-          `${rule.virtual} ${rule.channelName} · every showing`
+          `${rule.virtual} ${rule.channelName} · ${rule.newOnly ? 'first showings only' : 'every showing'}`
           + (rule.days ? ` · ${describeDays(rule.days)}` : '')
           + (rule.earliest !== null && rule.latest !== null ? ` · ${clockOf(rule.earliest)}–${clockOf(rule.latest)}` : '')),
       ),
       h('span', { class: 'actions' },
+        // An episode already recorded is passed over whatever this says. This is for the
+        // repeats that were never recorded in the first place -- a week of last season,
+        // which the guide marks and which there is otherwise no way to decline.
+        h('button', {
+          type: 'button',
+          class: 'secondary',
+          'aria-pressed': String(!!rule.newOnly),
+          title: rule.newOnly
+            ? 'Taking first showings only. Repeats the guide marks are passed over.'
+            : 'Taking every showing. Press to take first showings only.',
+          onclick: (clickEvent) => act(
+            `/api/recordings/rules/${rule.id}`,
+            { method: 'PATCH', body: JSON.stringify({ newOnly: !rule.newOnly }) },
+            clickEvent.currentTarget,
+            'Changing…'
+          ),
+        }, rule.newOnly ? 'First showings' : 'Every showing'),
         h('button', {
           type: 'button',
           class: 'secondary',

@@ -88,8 +88,9 @@ class RecordingStore
         $statement = $this->db->prepare(
             'INSERT OR REPLACE INTO schedules (
                 device, physical, program, virtual, channel_name, event_id, start, duration,
-                title, description, pad_start, pad_end, format, status, error, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)'
+                title, description, programme_id, episode, pad_start, pad_end, format,
+                status, error, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)'
         );
 
         $statement->execute([
@@ -103,6 +104,8 @@ class RecordingStore
             $schedule['duration'],
             $schedule['title'],
             $schedule['description'] ?? null,
+            $schedule['programmeId'] ?? null,
+            $schedule['episode'] ?? null,
             $schedule['padStart'] ?? 0,
             $schedule['padEnd'] ?? 0,
             self::KEPT,
@@ -242,9 +245,9 @@ class RecordingStore
         $statement = $this->db->prepare(
             'INSERT INTO recordings (
                 schedule_id, device, physical, program, virtual, channel_name, title, description,
-                path, format, tuner, pid, started_at, stops_at, ended_at, bytes, status, error,
-                reservation, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?, NULL, ?, ?)'
+                programme_id, episode, path, format, tuner, pid, started_at, stops_at,
+                ended_at, bytes, status, error, reservation, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?, NULL, ?, ?)'
         );
 
         $statement->execute([
@@ -256,6 +259,8 @@ class RecordingStore
             $recording['channelName'],
             $recording['title'],
             $recording['description'] ?? null,
+            $recording['programmeId'] ?? null,
+            $recording['episode'] ?? null,
             $recording['path'],
             $recording['format'],
             $recording['tuner'],
@@ -412,6 +417,78 @@ class RecordingStore
         return true;
     }
 
+    /**
+     * Note that an episode has been recorded, so it is not recorded again.
+     *
+     * Kept apart from the recording itself on purpose: a recording is deleted once it has
+     * been watched, or to make room, and neither means the episode is wanted again. The
+     * guide still lists it and it can still be recorded by hand.
+     *
+     * Only ever written for a showing the guide could identify. Where it could not -- a
+     * channel with no online guide behind it -- nothing is remembered and nothing changes.
+     */
+    public function rememberEpisode(?string $programmeId, string $title, ?string $episode, ?int $when = null): bool
+    {
+        if ($programmeId === null || trim($programmeId) === '') {
+            return false;
+        }
+
+        $statement = $this->db->prepare(
+            'INSERT INTO recorded_episodes (programme_id, title, episode, recorded_at)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT (programme_id) DO UPDATE SET recorded_at = excluded.recorded_at'
+        );
+        $statement->execute([trim($programmeId), $title, $episode, $when ?? time()]);
+
+        return true;
+    }
+
+    /**
+     * Which of these episodes have been recorded before.
+     *
+     * Asked once for a whole pass rather than once per showing: a rule looks at everything
+     * in the guide, and that is a question per programme otherwise.
+     *
+     * @param list<string> $programmeIds
+     * @return array<string, int> the identifier, and when it was recorded
+     */
+    public function recordedEpisodes(array $programmeIds): array
+    {
+        $wanted = array_values(array_unique(array_filter(array_map(
+            static fn ($id): string => is_string($id) ? trim($id) : '',
+            $programmeIds
+        ), static fn (string $id): bool => $id !== '')));
+
+        if ($wanted === []) {
+            return [];
+        }
+
+        $statement = $this->db->prepare(
+            'SELECT programme_id, recorded_at FROM recorded_episodes
+             WHERE programme_id IN (' . implode(',', array_fill(0, count($wanted), '?')) . ')'
+        );
+        $statement->execute($wanted);
+
+        $already = [];
+
+        foreach ($statement->fetchAll() as $row) {
+            $already[(string) $row['programme_id']] = (int) $row['recorded_at'];
+        }
+
+        return $already;
+    }
+
+    /**
+     * Forget that an episode was recorded, so a rule may take it again.
+     */
+    public function forgetEpisode(string $programmeId): bool
+    {
+        $statement = $this->db->prepare('DELETE FROM recorded_episodes WHERE programme_id = ?');
+        $statement->execute([trim($programmeId)]);
+
+        return $statement->rowCount() > 0;
+    }
+
     public function deleteRecording(int $id): bool
     {
         $statement = $this->db->prepare('DELETE FROM recordings WHERE id = ?');
@@ -439,8 +516,8 @@ class RecordingStore
         $statement = $this->db->prepare(
             'INSERT INTO rules (
                 device, physical, program, virtual, channel_name, title, earliest, latest,
-                days, timezone, format, pad_start, pad_end, active, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)'
+                days, timezone, format, pad_start, pad_end, new_only, active, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)'
         );
 
         $statement->execute([
@@ -457,11 +534,23 @@ class RecordingStore
             self::KEPT,
             $rule['padStart'] ?? 0,
             $rule['padEnd'] ?? 0,
+            !empty($rule['newOnly']) ? 1 : 0,
             $now,
             $now,
         ]);
 
         return (int) $this->db->lastInsertId();
+    }
+
+    /**
+     * Change whether a rule takes repeats, on a rule that already exists.
+     */
+    public function setRuleNewOnly(int $id, bool $newOnly): bool
+    {
+        $statement = $this->db->prepare('UPDATE rules SET new_only = ?, updated_at = ? WHERE id = ?');
+        $statement->execute([$newOnly ? 1 : 0, time(), $id]);
+
+        return $statement->rowCount() > 0;
     }
 
     /**
@@ -530,6 +619,7 @@ class RecordingStore
             'padStart'    => (int) $row['pad_start'],
             'padEnd'      => (int) $row['pad_end'],
             'active'      => (int) $row['active'] === 1,
+            'newOnly'     => (int) ($row['new_only'] ?? 0) === 1,
             'createdAt'   => (int) $row['created_at'],
             'updatedAt'   => (int) $row['updated_at'],
         ];
@@ -591,6 +681,16 @@ class RecordingStore
                 updated_at INTEGER NOT NULL
             );
             CREATE INDEX IF NOT EXISTS recordings_by_status ON recordings (status);
+            /* Episodes that have been recorded, which outlives the recordings
+               themselves: deleting one to free space should not have it recorded again
+               the next time it comes round. Small by design -- an identifier, and enough
+               to say what it was when something has to be explained to somebody. */
+            CREATE TABLE IF NOT EXISTS recorded_episodes (
+                programme_id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                episode TEXT,
+                recorded_at INTEGER NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS rules (
                 id INTEGER PRIMARY KEY,
                 device TEXT NOT NULL,
@@ -607,6 +707,7 @@ class RecordingStore
                 pad_start INTEGER NOT NULL DEFAULT 0,
                 pad_end INTEGER NOT NULL DEFAULT 0,
                 active INTEGER NOT NULL DEFAULT 1,
+                new_only INTEGER NOT NULL DEFAULT 0,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL,
                 UNIQUE (device, physical, program, title)
@@ -618,8 +719,15 @@ class RecordingStore
         $this->addMissingColumns('schedules', [
             'attempts'    => 'INTEGER NOT NULL DEFAULT 0',
             'retry_after' => 'INTEGER',
+            // Which showing of a programme this is, where the guide knows. Carried from
+            // the schedule to the recording and from there into what has been recorded.
+            'programme_id' => 'TEXT',
+            'episode'      => 'TEXT',
         ]);
+        $this->addMissingColumns('rules', ['new_only' => 'INTEGER NOT NULL DEFAULT 0']);
         $this->addMissingColumns('recordings', [
+            'programme_id' => 'TEXT',
+            'episode'      => 'TEXT',
             // The picture this recording was made with, kept so it cannot change later.
             'artwork_path'      => 'TEXT',
             'convert_requested' => 'INTEGER NOT NULL DEFAULT 0',
@@ -662,6 +770,8 @@ class RecordingStore
             'virtual'     => $row['virtual'],
             'channelName' => $row['channel_name'],
             'eventId'     => $row['event_id'] === null ? null : (int) $row['event_id'],
+            'programmeId' => $row['programme_id'] ?? null,
+            'episode'     => $row['episode'] ?? null,
             'start'       => (int) $row['start'],
             'duration'    => (int) $row['duration'],
             'title'       => $row['title'],
@@ -694,6 +804,8 @@ class RecordingStore
             'channelName'      => $row['channel_name'],
             'title'            => $row['title'],
             'description'      => $row['description'],
+            'programmeId'      => $row['programme_id'] ?? null,
+            'episode'          => $row['episode'] ?? null,
             'path'             => $row['path'],
             'format'           => $row['format'],
             'tuner'            => $row['tuner'] === null ? null : (int) $row['tuner'],

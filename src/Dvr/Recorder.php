@@ -460,6 +460,8 @@ class Recorder
             'channelName' => $schedule['channelName'],
             'title'       => $schedule['title'],
             'description' => $this->currentDescription($schedule) ?? $schedule['description'],
+            'programmeId' => $schedule['programmeId'] ?? null,
+            'episode'     => $schedule['episode'] ?? null,
             'path'        => $path,
             'format'      => RecordingStore::KEPT,
             'tuner'       => $tuner->getIndex(),
@@ -957,6 +959,17 @@ class Recorder
             'stopRequested' => null,
             'artworkPath'   => $this->keepArtwork($recording),
         ]);
+
+        // Remembered only when something was actually recorded. A failure that wrote
+        // nothing must not stop the next showing being taken, which is the whole of what a
+        // retry is for.
+        if ($status === RecordingStore::STATUS_DONE && $bytes > 0) {
+            $this->store->rememberEpisode(
+                $recording['programmeId'] ?? null,
+                (string) $recording['title'],
+                $recording['episode'] ?? null
+            );
+        }
 
         if ($recording['scheduleId'] !== null) {
             $this->store->markSchedule((int) $recording['scheduleId'], $status, $error);
