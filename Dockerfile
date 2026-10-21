@@ -11,7 +11,7 @@ COPY src ./src
 RUN composer dump-autoload --no-dev --optimize --no-interaction
 
 # ---- Runtime: nginx + php-fpm, non-root -----------------------------------
-FROM php:8.5.10-fpm-alpine3.24
+FROM php:8.5.12-fpm-alpine3.24
 
 # ffmpeg is for live playback; build with --build-arg WITH_FFMPEG=0 to leave it out.
 ARG WITH_FFMPEG=1
